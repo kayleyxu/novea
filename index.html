@@ -54,7 +54,7 @@
   .map-computing{opacity:0.45;transition:opacity 0.3s;}
   .map-ready{opacity:1;transition:opacity 0.3s;}
   @media(max-width:900px){.rx-grid{flex-direction:column!important}.rx-sidebar{flex-direction:column!important}.rx-map-block{width:100%!important}.diag-wrap{flex-direction:column!important;align-items:center!important}.diag-left{max-width:100%!important;width:100%!important}}
-  @media(max-width:600px){.rx-presc-grid{grid-template-columns:1fr!important}.rx-clinical-grid{grid-template-columns:1fr!important}}
+  @media(max-width:600px){.rx-presc-grid{grid-template-columns:1fr!important}}
 </style>
 </head>
 <body>
@@ -1438,7 +1438,7 @@ function renderPrescription() {
       )
     ),
     rxDone?h("div",{style:{fontSize:"11px",color:"#5a3060",fontFamily:"monospace",background:"#e8e0f4",padding:"7px 10px",borderRadius:"5px"}},"From β=",rx.beta.toFixed(2)," optimum · σ=",rx.sigma,"° · μ=",rx.mu.toFixed(2),patientDataR?(" · "+patientDataR.eye.toUpperCase()+" eye"):" · Demo patient"):null,
-    rxDone?h("div",{class:"rx-clinical-grid",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"12px"}},
+    rxDone?h("div",{class:"rx-clinical-grid",style:{display:"grid",gridTemplateColumns:"1fr",gap:"10px",marginTop:"12px"}},
       h("div",{style:{background:"#fff8ee",border:"1px solid #f0c060",borderRadius:"8px",padding:"12px 14px"}},
         h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
         h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
@@ -1807,7 +1807,7 @@ function renderPrescription() {
         ),
         rxLDone?h("div",{style:{fontSize:"11px",color:"#5a3060",fontFamily:"monospace",background:"#e8e0f4",padding:"7px 10px",borderRadius:"5px"}},
           "From β=",rxL.beta.toFixed(2)," optimum · σ=",rxL.sigma,"° · μ=",rxL.mu.toFixed(2)," · LEFT eye"):null,
-        rxLDone?h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginTop:"12px"}},
+        rxLDone?h("div",{style:{display:"grid",gridTemplateColumns:"1fr",gap:"10px",marginTop:"12px"}},
           h("div",{style:{background:"#fff8ee",border:"1px solid #f0c060",borderRadius:"8px",padding:"12px 14px"}},
             h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
             h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
@@ -1898,16 +1898,7 @@ function renderPrescription() {
             h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px"}},"ω RIGHT"),
             h("div",{style:{fontSize:"24px",fontWeight:"700",color:"#3b0764",fontFamily:"monospace",lineHeight:"1"}},(omega*100).toFixed(0)+"%"))
         ),
-        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"8px"}},
-          (()=>{const scR=computeScore(patientDataR.patient,evRx.alpha_c,evRx.gamma,evRx.sigma??5,evRx.beta??0.5,"right",evRx.hDistort??0.3);
-            return h("div",{style:{background:"#ede9fe",borderRadius:"4px",padding:"6px 8px"}},
-              h("div",{style:{fontSize:"9px",color:"#5b21b6",fontFamily:"monospace",fontWeight:"700",marginBottom:"2px"}},"RIGHT EYE RCS"),
-              h("div",{style:{fontSize:"16px",fontWeight:"700",color:"#3b0764",fontFamily:"monospace"}},scR?scR.mainScore.toFixed(3):"—"))})(),
-          (()=>{const scL=computeScore(patientDataL.patient,evRx.alpha_c,evRx.gamma,evRx.sigma??5,evRx.beta??0.5,"left",evRx.hDistort??0.3);
-            return h("div",{style:{background:"#dbeafe",borderRadius:"4px",padding:"6px 8px"}},
-              h("div",{style:{fontSize:"9px",color:"#1e40af",fontFamily:"monospace",fontWeight:"700",marginBottom:"2px"}},"LEFT EYE RCS"),
-              h("div",{style:{fontSize:"16px",fontWeight:"700",color:"#1e3a8a",fontFamily:"monospace"}},scL?scL.mainScore.toFixed(3):"—"))})()
-        ),
+
         h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",background:"#ede9fe",
           borderRadius:"4px",padding:"5px 8px"}},
           "Both eyes deviate gaze "+alphaEV.toFixed(1)+"° toward "+azimuthLabel((evRx.gamma+180)%360)+" · No metasurface needed — pure gaze training")
