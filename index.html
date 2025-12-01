@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<title>Novea — Patient Damage Map → PRL Prescription</title>
+<title>Novea — PRL Prescription Tool</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <style>
@@ -733,14 +733,66 @@ function sliderEl({label,min,max,step,val,color,note,fmt,onChange}) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Import scotoma map from JSON ────────────────────────────────────────────
+function loadDamageMap(file, forceEye) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      if (!payload.scotomaCells) throw new Error("Invalid format — missing scotomaCells");
+      if (forceEye) payload.eye = forceEye;
+      if (!payload.eye) throw new Error("Invalid format — missing eye field");
+      // Show loading indicator immediately before heavy buildMaskFromAmsler call
+      appState.importing = payload.eye;
+      render();
+      setTimeout(()=>{
+        try {
+          const scotomaCells    = new Set(payload.scotomaCells);
+          const subScotomaCells = new Set(payload.subScotomaCells || []);
+          const distortCells    = new Set(payload.distortCells   || []);
+          const patient = buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells);
+          const wholeCells  = scotomaCells.size;
+          const subCells    = subScotomaCells.size;
+          const totalDeg2   = wholeCells + subCells * 0.25;
+          const distortDeg2 = distortCells.size;
+          const patientData = {patient, scotomaCells, subScotomaCells, distortCells,
+            eye:payload.eye, wholeCells, subCells, totalDeg2, distortDeg2};
+          const _eye = payload.eye;
+          if (_eye === "right") {
+            appState.patientDataRight = patientData;
+            appState.rx = mkRxSlot();
+          } else {
+            appState.patientDataLeft = patientData;
+            appState.rxLeft = mkRxSlot();
+          }
+          appState.rxEV = {alpha_c:0,gamma:0,status:"idle",optima:null,committedSigma:5,
+            omega:appState.rxEV?.omega??0.5,sigma:5,beta:0.5,mu:0.2,hDistort:0.3};
+          appState.binocularMode = !!(appState.patientDataRight && appState.patientDataLeft);
+          appState.importing = null;
+          setState({patientData, screen:"prescription"});
+        } catch(err) {
+          appState.importing = null;
+          render();
+          alert("Could not import scotoma map: " + err.message);
+        }
+      }, 30);
+    } catch(err) {
+      appState.importing = null;
+      alert("Could not import scotoma map: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
 function renderHome() {
   const wrap=h("div",{style:{maxWidth:"680px",margin:"60px auto",padding:"0 24px",textAlign:"center"}},
     h("div",{style:{fontSize:"52px",fontWeight:"900",color:"#6b0070",letterSpacing:"-2px",marginBottom:"8px",fontFamily:"monospace",lineHeight:"1"}},
       "Novea"),
     h("div",{style:{fontSize:"16px",fontWeight:"600",color:"#3d0042",letterSpacing:"0px",marginBottom:"20px",fontFamily:"monospace",lineHeight:"1.4"}},
-      "Patient Damage Map → PRL Prescription"),
+      "PRL Prescription Tool"),
     h("div",{style:{fontSize:"13px",color:"#6b7280",marginBottom:"40px",lineHeight:"1.8",fontFamily:"monospace"}},
-      "Two-stage pipeline: map the patient's AMD-damaged retina using a digital Amsler grid, then compute the optimal Preferred Retinal Locus for optical correction."),
+      "Map the patient's scotoma with a digital Amsler grid, then compute the optimal Preferred Retinal Locus for MS or eccentric viewing correction."),
     h("div",{style:{display:"flex",gap:"16px",justifyContent:"center",flexWrap:"wrap"}},
       h("button",{style:btnStyle({padding:"16px 32px",border:"1px solid #c2410c",borderRadius:"6px",
         background:"linear-gradient(135deg,#1e40af,#c2410c)",color:"#ffffff",fontSize:"14px"}),
@@ -760,7 +812,28 @@ function renderHome() {
         onclick:()=>{ appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0}; setState({patientData:null,screen:"prescription"}); }},
         "Demo Patient")
     ),
-    h("div",{style:{marginTop:"40px",fontSize:"12px",color:"#64748b",fontFamily:"monospace",lineHeight:"2"}},
+    h("div",{style:{marginTop:"20px",display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}},
+      h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",letterSpacing:"1px"}},"— or import scotoma map —"),
+      h("div",{style:{display:"flex",gap:"12px",flexWrap:"wrap",justifyContent:"center"}},
+        (()=>{
+          const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+          inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"right");});
+          const btn=h("button",{style:btnStyle({padding:"10px 22px",border:"1px solid #c4b5fd",borderRadius:"6px",
+            background:"#f5f3ff",color:"#6b0070",fontSize:"13px",fontWeight:"700"}),
+            onclick:()=>inp.click()},"📂 Right Eye");
+          return h("div",null,inp,btn);
+        })(),
+        (()=>{
+          const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+          inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"left");});
+          const btn=h("button",{style:btnStyle({padding:"10px 22px",border:"1px solid #c4b5fd",borderRadius:"6px",
+            background:"#f5f3ff",color:"#6b0070",fontSize:"13px",fontWeight:"700"}),
+            onclick:()=>inp.click()},"📂 Left Eye");
+          return h("div",null,inp,btn);
+        })()
+      )
+    ),
+    h("div",{style:{marginTop:"24px",fontSize:"12px",color:"#64748b",fontFamily:"monospace",lineHeight:"2"}},
       "Diagnostic method: PocDoc digital Amsler grid (PMC11039616)",
       h("br"),
       "3D computer Amsler grid (PubMed 15933591)",
@@ -779,7 +852,7 @@ function renderDiagInstructions() {
 
   wrap.appendChild(h("div",{style:{marginBottom:"22px"}},
     h("div",{style:{fontSize:"11px",color:"#6b0070",letterSpacing:"3px",textTransform:"uppercase",marginBottom:"5px",fontFamily:"monospace"}},"STEP 1 OF 2 — DIAGNOSTIC"),
-    h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0f172a",letterSpacing:"-0.5px",fontFamily:"monospace"}},"Amsler Grid · Damage Mapping"),
+    h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0f172a",letterSpacing:"-0.5px",fontFamily:"monospace"}},"Amsler Grid · Scotoma Mapping"),
     h("div",{style:{fontSize:"11px",color:"#6b7280",marginTop:"4px",fontFamily:"monospace"}},
       "Digital scotoma tracing · PocDoc (PMC11039616) · 3D border-trace Amsler (PubMed 15933591) · 30×30 grid ±15° · No special device")
   ));
@@ -918,7 +991,7 @@ function renderDiagDraw() {
         ? h("span",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}},
             h("span",{style:{display:"inline-block",width:"14px",height:"14px",border:"2px solid #93c5fd",
               borderTopColor:"#2563eb",borderRadius:"50%",animation:"spin 0.8s linear infinite"}},""),
-            h("span",{class:"computing-dots"},"Building damage map"))
+            h("span",{class:"computing-dots"},"Building scotoma map"))
         : "→ GENERATE DAMAGE MAP";
       return h("button",{
         style:btnStyle({width:"100%",padding:"12px",fontSize:"13px",
@@ -1282,7 +1355,7 @@ function makeMapBlock(size, mzKey, label, borderColor) {
 }
 
 
-// ── Save damage map as JSON ───────────────────────────────────────────────────
+// ── Export scotoma map as JSON ──────────────────────────────────────────────
 function saveDamageMap(pd) {
   if (!pd) return;
   const payload = {
@@ -1299,7 +1372,7 @@ function saveDamageMap(pd) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href = url;
-  a.download = `novea_damage_${pd.eye}_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `novea_scotoma_${pd.eye}_${new Date().toISOString().slice(0,10)}.json`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
@@ -1329,11 +1402,26 @@ function renderPrescription() {
       patientDataR?h("button",{
         style:btnStyle({padding:"8px 14px",border:"1px solid #059669",background:"#ecfdf5",color:"#065f46",fontSize:"12px"}),
         onclick:()=>saveDamageMap(patientDataR)},
-        "💾 Save "+(patientDataR.eye==="right"?"R":"L")+" Map"):null,
+        "💾 Export "+(patientDataR.eye==="right"?"R":"L")+" Scotoma"):null,
       patientDataL?h("button",{
         style:btnStyle({padding:"8px 14px",border:"1px solid #059669",background:"#ecfdf5",color:"#065f46",fontSize:"12px"}),
         onclick:()=>saveDamageMap(patientDataL)},
-        "💾 Save L Map"):null,
+        "💾 Export L Scotoma"):null,
+      // Import buttons — always visible so user can add/replace either eye
+      (()=>{
+        const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+        inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"right");});
+        return h("div",null,inp,
+          h("button",{style:btnStyle({padding:"8px 14px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6b0070",fontSize:"12px"}),
+            onclick:()=>inp.click()},"📂 R"));
+      })(),
+      (()=>{
+        const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+        inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"left");});
+        return h("div",null,inp,
+          h("button",{style:btnStyle({padding:"8px 14px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6b0070",fontSize:"12px"}),
+            onclick:()=>inp.click()},"📂 L"));
+      })(),
       !binocular?h("button",{style:btnStyle({padding:"8px 14px",border:"1px solid #1e40af",background:"#e8f0ff",color:"#1e40af",fontSize:"12px"}),
           onclick:()=>{
             const otherEye=(patientDataR&&patientDataR.eye==="right")?"left":"right";
@@ -1437,7 +1525,7 @@ function renderPrescription() {
         )
       )
     ),
-    rxDone?h("div",{style:{fontSize:"11px",color:"#5a3060",fontFamily:"monospace",background:"#e8e0f4",padding:"7px 10px",borderRadius:"5px"}},"From β=",rx.beta.toFixed(2)," optimum · σ=",rx.sigma,"° · μ=",rx.mu.toFixed(2),patientDataR?(" · "+patientDataR.eye.toUpperCase()+" eye"):" · Demo patient"):null,
+    rxDone?h("div",{style:{fontSize:"11px",color:"#5a3060",fontFamily:"monospace",background:"#e8e0f4",padding:"7px 10px",borderRadius:"5px"}},"From β=",rx.beta.toFixed(2)," optimum · σ=",rx.sigma,"° · μ=",rx.mu.toFixed(2),patientDataR?(" · "+patientDataR.eye.toUpperCase()+" eye"):" · Demo"):null,
     rxDone?h("div",{class:"rx-clinical-grid",style:{display:"grid",gridTemplateColumns:"1fr",gap:"10px",marginTop:"12px"}},
       h("div",{style:{background:"#fff8ee",border:"1px solid #f0c060",borderRadius:"8px",padding:"12px 14px"}},
         h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
@@ -1535,7 +1623,7 @@ function renderPrescription() {
   // Zoom state lives on appState so it survives re-renders
 
   const CANVAS_SIZE=480;
-  const _rmb=makeMapBlock(CANVAS_SIZE,"mapZoom",binocular?"RIGHT EYE — Retinal Map":"Retinal Damage Map → PRL Prescription","#6b0070");
+  const _rmb=makeMapBlock(CANVAS_SIZE,"mapZoom",binocular?"RIGHT EYE — Scotoma Map":"Scotoma Map → PRL Prescription","#6b0070");
   const mapCanvas=_rmb.canvas, mapClip=_rmb.clip;
   requestAnimationFrame(()=>_rmb.wireEvents());
 
@@ -1828,7 +1916,7 @@ function renderPrescription() {
       );
 
       // Left map — 480px with zoom
-      const _lmb=makeMapBlock(480,"mapZoomL","LEFT EYE — Retinal Map","#6b0070");
+      const _lmb=makeMapBlock(480,"mapZoomL","LEFT EYE — Scotoma Map","#6b0070");
       _rxMapCanvasRefL=_lmb.canvas;
       requestAnimationFrame(()=>_lmb.wireEvents());
 
@@ -1962,7 +2050,7 @@ function renderApp() {
   const header=h("div",{style:{background:"#ffffff",borderBottom:"1px solid #e8d0ec",boxShadow:"0 1px 6px rgba(107,0,112,0.10)",padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
     h("div",null,
       h("span",{style:{fontSize:"28px",fontWeight:"900",color:"#6b0070",letterSpacing:"-1px",fontFamily:"monospace"}},"Novea"),
-      h("span",{style:{fontSize:"10px",color:"#c0a0c8",marginLeft:"14px",fontFamily:"monospace",fontWeight:"400"}},"Patient Damage Map → PRL Prescription")
+      h("span",{style:{fontSize:"10px",color:"#c0a0c8",marginLeft:"14px",fontFamily:"monospace",fontWeight:"400"}},"PRL Prescription Tool")
     ),
     h("div",{style:{display:"flex",gap:"8px",alignItems:"center"}},
       s.screen==="prescription"?h("span",{style:{fontSize:"10px",color:"#b45309",fontFamily:"monospace"}},
@@ -1997,6 +2085,22 @@ function renderApp() {
   appEl.innerHTML="";
   appEl.appendChild(header);
   appEl.appendChild(content);
+  // Importing overlay
+  if (appState.importing) {
+    const overlay=h("div",{style:{position:"fixed",inset:"0",background:"rgba(107,0,112,0.18)",
+      display:"flex",alignItems:"center",justifyContent:"center",zIndex:"9999"}},
+      h("div",{style:{background:"#fff",border:"2px solid #6b0070",borderRadius:"12px",
+        padding:"28px 40px",fontFamily:"monospace",textAlign:"center",
+        boxShadow:"0 8px 32px rgba(107,0,112,0.25)"}},
+        h("div",{style:{fontSize:"13px",fontWeight:"700",color:"#6b0070",letterSpacing:"1px",marginBottom:"10px"}},
+          "IMPORTING SCOTOMA MAP"),
+        h("div",{style:{fontSize:"12px",color:"#9370a0",marginBottom:"14px"}},
+          (appState.importing==="right"?"Right":"Left")+" eye · Building retinal mask…"),
+        h("span",{class:"computing-dots",style:{fontSize:"13px",color:"#6b0070"}})
+      )
+    );
+    appEl.appendChild(overlay);
+  }
   if(_pendingCanvasWire){
     const _wc=_pendingCanvasWire;_pendingCanvasWire=null;
     const _d=appState.diag;
