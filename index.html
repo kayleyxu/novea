@@ -130,23 +130,29 @@ function makeSmoothRegion(ox, oy, radiusFn, amp, rng, nNoise) {
     return r <= radiusFn(ang) + amp*noise(ang/360);
   };
 }
-function buildMask(regions, satellites=[], annularExclusions=[]) {
-  const mask    = new Uint8Array(MASK_N*MASK_N);
+// Low-level mask builder — accepts a pre-filled Uint8Array (dmgMask) instead of
+// an array of region closures. This avoids the O(cells × regions) closure loop
+// that caused the main-thread freeze on "Generate Damage Map".
+function buildMaskFromArrays(dmgMask, satellites=[], annularExclusions=[]) {
+  const mask    = new Uint8Array(dmgMask); // copy
   const satMask = new Uint8Array(MASK_N*MASK_N);
   const idx = (gi,gj) => gj*MASK_N+gi;
-  for (let gi=0;gi<MASK_N;gi++) {
-    for (let gj=0;gj<MASK_N;gj++) {
-      const x=gi*MASK_RES-MASK_RANGE, y=gj*MASK_RES-MASK_RANGE;
-      let dmg = regions.some(fn=>fn(x,y));
-      for (const {cx,cy,r1,r2,angMin,angMax} of annularExclusions) {
-        const dx=x-cx,dy=y-cy,r=Math.sqrt(dx*dx+dy*dy);
-        const ang=((Math.atan2(dy,dx)*180/Math.PI)+360)%360;
-        const inAng=angMax>angMin?(ang>=angMin&&ang<=angMax):(ang>=angMin||ang<=angMax);
-        if (r>=r1&&r<=r2&&inAng) dmg=false;
+  // Apply annular exclusions (carve out regions from damage mask)
+  if (annularExclusions.length) {
+    for (let gi=0;gi<MASK_N;gi++) {
+      for (let gj=0;gj<MASK_N;gj++) {
+        if (!mask[idx(gi,gj)]) continue;
+        const x=gi*MASK_RES-MASK_RANGE, y=gj*MASK_RES-MASK_RANGE;
+        for (const {cx,cy,r1,r2,angMin,angMax} of annularExclusions) {
+          const dx=x-cx,dy=y-cy,r=Math.sqrt(dx*dx+dy*dy);
+          const ang=((Math.atan2(dy,dx)*180/Math.PI)+360)%360;
+          const inAng=angMax>angMin?(ang>=angMin&&ang<=angMax):(ang>=angMin||ang<=angMax);
+          if (r>=r1&&r<=r2&&inAng){ mask[idx(gi,gj)]=0; break; }
+        }
       }
-      mask[idx(gi,gj)] = dmg?1:0;
     }
   }
+  // Satellite mask
   for (let gi=0;gi<MASK_N;gi++) {
     for (let gj=0;gj<MASK_N;gj++) {
       if (mask[idx(gi,gj)]===1) continue;
@@ -174,6 +180,20 @@ function buildMask(regions, satellites=[], annularExclusions=[]) {
   };
 }
 
+// Legacy closure-based builder — kept only for PATIENT_C demo which uses makeSmoothRegion fns.
+// Not called from the hot path (Amsler → mask).
+function buildMask(regions, satellites=[], annularExclusions=[]) {
+  const dmgMask = new Uint8Array(MASK_N*MASK_N);
+  const idx = (gi,gj) => gj*MASK_N+gi;
+  for (let gi=0;gi<MASK_N;gi++) {
+    for (let gj=0;gj<MASK_N;gj++) {
+      const x=gi*MASK_RES-MASK_RANGE, y=gj*MASK_RES-MASK_RANGE;
+      if (regions.some(fn=>fn(x,y))) dmgMask[idx(gi,gj)]=1;
+    }
+  }
+  return buildMaskFromArrays(dmgMask, satellites, annularExclusions);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUILD MASK FROM AMSLER DRAWING
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -184,10 +204,32 @@ const AMSLER_CELL_MM   = 5;    // physical cell size: 5 mm
 const AMSLER_DIST_MM   = 300;  // standard viewing distance: 300 mm (30 cm)
 
 function buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells) {
-  const regions = [(x,y) => x*x+y*y < 0.5*0.5];
+  // Direct bitmap rasterization — no closure array, no O(cells×regions) loop.
+  // For each Amsler sub-sample point we compute its θ_c position + influence radius,
+  // then stamp a filled circle directly into dmgMask.
+  const dmgMask = new Uint8Array(MASK_N*MASK_N);
+  const idx = (gi,gj) => gj*MASK_N+gi;
+
+  // Stamp a disc of radius `inf` centered at (xc,yc) into dmgMask
+  const stampDisc = (xc, yc, inf) => {
+    const gi0 = Math.round((xc + MASK_RANGE) / MASK_RES);
+    const gj0 = Math.round((yc + MASK_RANGE) / MASK_RES);
+    const rad = Math.ceil(inf / MASK_RES) + 1;
+    const inf2 = inf * inf;
+    for (let dgi = -rad; dgi <= rad; dgi++) {
+      for (let dgj = -rad; dgj <= rad; dgj++) {
+        const gi = gi0 + dgi, gj = gj0 + dgj;
+        if (gi < 0 || gi >= MASK_N || gj < 0 || gj >= MASK_N) continue;
+        const dx = dgi * MASK_RES, dy = dgj * MASK_RES;
+        if (dx*dx + dy*dy < inf2) dmgMask[idx(gi,gj)] = 1;
+      }
+    }
+  };
+
+  // Stamp central foveal disc (r < 0.5°)
+  stampDisc(0, 0, 0.5);
+
   const rasteriseCell = (xmm_min, ymm_min, cellMM) => {
-    // xmm_min, ymm_min: physical mm offset from grid centre
-    // cellMM: cell size in mm
     const step = cellMM / AMSLER_SUBSAMPLE;
     const halfStep = step * 0.5;
     for (let si = 0; si < AMSLER_SUBSAMPLE; si++) {
@@ -196,24 +238,21 @@ function buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells) {
         const ymm = ymm_min + (sj + 0.5) * step;
         const rmm = Math.sqrt(xmm * xmm + ymm * ymm);
         if (rmm < 1e-6) continue;
-        // exact flat-screen → visual angle conversion
         const rn  = Math.atan(rmm / AMSLER_DIST_MM) * 180 / Math.PI;
         const phi = Math.atan2(ymm, xmm);
         const tc  = thetaCenter(rn);
         const xc  = tc * Math.cos(phi), yc = tc * Math.sin(phi);
-        // influence radius: step diagonally outward in mm, convert to θ_c
         const rmm_hi = rmm + halfStep * Math.SQRT2;
         const rn_hi  = Math.atan(rmm_hi / AMSLER_DIST_MM) * 180 / Math.PI;
         const tc_hi  = thetaCenter(rn_hi);
         const influence = (tc_hi - tc) + MASK_RES * 0.6;
-        const _xc = xc, _yc = yc, _inf = influence;
-        regions.push((x, y) => { const dx = x - _xc, dy = y - _yc; return dx*dx + dy*dy < _inf*_inf; });
+        stampDisc(xc, yc, influence);
       }
     }
   };
+
   for (const key of scotomaCells) {
     const [c, r] = key.split(',').map(Number);
-    // convert cell index to mm offset from grid centre
     const xmm_min = (c - AMSLER_CELLS / 2) * AMSLER_CELL_MM;
     const ymm_min = (AMSLER_CELLS / 2 - r - 1.0) * AMSLER_CELL_MM;
     rasteriseCell(xmm_min, ymm_min, AMSLER_CELL_MM);
@@ -224,8 +263,30 @@ function buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells) {
     const ymm_min = (AMSLER_DEG - (sr + 1) * 0.5) * AMSLER_CELL_MM;
     rasteriseCell(xmm_min, ymm_min, AMSLER_CELL_MM * 0.5);
   }
-  const pt=buildMask(regions,[],[]);
-  for(const key of(distortCells||[])){const[col,row]=key.split(",").map(Number);const xmm_min=(col-AMSLER_CELLS/2)*AMSLER_CELL_MM;const ymm_min=(AMSLER_CELLS/2-row-1.0)*AMSLER_CELL_MM;const step=AMSLER_CELL_MM/AMSLER_SUBSAMPLE;for(let si=0;si<AMSLER_SUBSAMPLE;si++){for(let sj=0;sj<AMSLER_SUBSAMPLE;sj++){const xmm=xmm_min+(si+0.5)*step,ymm=ymm_min+(sj+0.5)*step;const rmm=Math.sqrt(xmm*xmm+ymm*ymm);if(rmm<1e-6)continue;const rn=Math.atan(rmm/AMSLER_DIST_MM)*180/Math.PI;const phi=Math.atan2(ymm,xmm);const tc=thetaCenter(rn);const xc=tc*Math.cos(phi),yc=tc*Math.sin(phi);if(!pt.damage(xc,yc)&&!pt.satellite(xc,yc)&&!inDisc(xc,yc))pt.markDistort(xc,yc);}}}
+
+  const pt = buildMaskFromArrays(dmgMask, [], []);
+
+  // Stamp distortion cells directly into distortMask (skip damage/disc cells)
+  for (const key of (distortCells || [])) {
+    const [col, row] = key.split(',').map(Number);
+    const xmm_min = (col - AMSLER_CELLS / 2) * AMSLER_CELL_MM;
+    const ymm_min = (AMSLER_CELLS / 2 - row - 1.0) * AMSLER_CELL_MM;
+    const step = AMSLER_CELL_MM / AMSLER_SUBSAMPLE;
+    for (let si = 0; si < AMSLER_SUBSAMPLE; si++) {
+      for (let sj = 0; sj < AMSLER_SUBSAMPLE; sj++) {
+        const xmm = xmm_min + (si + 0.5) * step;
+        const ymm = ymm_min + (sj + 0.5) * step;
+        const rmm = Math.sqrt(xmm * xmm + ymm * ymm);
+        if (rmm < 1e-6) continue;
+        const rn  = Math.atan(rmm / AMSLER_DIST_MM) * 180 / Math.PI;
+        const phi = Math.atan2(ymm, xmm);
+        const tc  = thetaCenter(rn);
+        const xc  = tc * Math.cos(phi), yc = tc * Math.sin(phi);
+        if (!pt.damage(xc, yc) && !pt.satellite(xc, yc) && !inDisc(xc, yc))
+          pt.markDistort(xc, yc);
+      }
+    }
+  }
   return pt;
 }
 
@@ -255,51 +316,119 @@ const PATIENT_C = (()=>{
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCORING ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
+// Pre-computed per-theta row cache — reused across all computeScore calls with same sigma
+// Keyed by "sigma:tn_center" — rebuilt only when those change.
+let _scoreCache = null;
+function getScoreCache(sigma, tn_center) {
+  const key = sigma + ':' + tn_center.toFixed(4);
+  if (_scoreCache && _scoreCache.key === key) return _scoreCache;
+  const dCutoff = sigma * 3.7;
+  const thetaMin = Math.max(tn_center - dCutoff, 0.5);
+  const thetaMax = Math.min(tn_center + dCutoff, RETINA_DEG);
+  const phiSteps = Math.round(360 / DPHI);
+  // Pre-compute per-theta constants
+  const rows = [];
+  for (let theta = thetaMin; theta <= thetaMax + DTHETA * 0.5; theta += DTHETA) {
+    const tc = thetaCenter(theta);
+    if (tc > MASK_RANGE) continue;
+    const dA = sphereArea(theta);
+    const ti = Math.round(theta / DTHETA);
+    const tc_rad = tc * Math.PI / 180;
+    // Pre-compute cos/sin for all phi values
+    const phiData = new Float64Array(phiSteps * 4); // [cosP, sinP, phi_rad, placeholder] per phi
+    for (let pi = 0; pi < phiSteps; pi++) {
+      const phi = pi * DPHI;
+      phiData[pi * 2]     = Math.cos(phi * Math.PI / 180);
+      phiData[pi * 2 + 1] = Math.sin(phi * Math.PI / 180);
+    }
+    rows.push({theta, tc, dA, ti, tc_rad, phiData});
+  }
+  // Pre-compute cos/sin of tn_center for gcDist
+  const tc2 = thetaCenter(tn_center) * Math.PI / 180;
+  const cosTc2 = Math.cos(tc2), sinTc2 = Math.sin(tc2);
+  _scoreCache = {key, rows, dCutoff, phiSteps, sigma, cosTc2, sinTc2, tn_center};
+  return _scoreCache;
+}
+
+// Reusable Uint8Array for healthy bitmap — avoids GC pressure from Set
+const _TI_MAX = 65, _PI_MAX = 120;
+const _healthyBuf = new Uint8Array(_TI_MAX * _PI_MAX);
+
 function computeScore(patient, alpha_c, gammaDeg, sigma, beta, eye, hDistort=0.3) {
-  // For left eye, mirror x in mask/disc lookups so gamma convention is correct
-  const _xs=(eye==="left")?-1:1;
-  if (alpha_c<0.5) return null;
-  const lcx=_xs*alpha_c*Math.cos(gammaDeg*Math.PI/180);
-  const lcy=alpha_c*Math.sin(gammaDeg*Math.PI/180);
-  if (patient.damage(lcx,lcy)||patient.satellite(lcx,lcy)||inDisc(lcx,lcy)) return null;
-  const tn_center=thetaNodal(alpha_c);
-  const dCutoff=sigma*3.7;
-  const thetaMin=Math.max(tn_center-dCutoff,0.5);
-  const thetaMax=Math.min(tn_center+dCutoff,RETINA_DEG);
-  const healthySet=new Set(), cellList=[];
-  for (let theta=thetaMin;theta<=thetaMax+DTHETA*0.5;theta+=DTHETA) {
-    for (let phi=0;phi<360;phi+=DPHI) {
-      const d=gcDist(theta,phi,tn_center,gammaDeg);
-      if (d>dCutoff) continue;
-      const G=Math.exp(-d*d/(2*sigma*sigma));
-      const dA=sphereArea(theta);
-      const tc_cell=thetaCenter(theta);
-      const cx=_xs*tc_cell*Math.cos(phi*Math.PI/180);
-      const cy=tc_cell*Math.sin(phi*Math.PI/180);
-      if (tc_cell>MASK_RANGE) continue;
-      const _dmg=patient.damage(cx,cy)||patient.satellite(cx,cy)||inDisc(cx,cy);
-      const H=_dmg?0:patient.distort&&patient.distort(cx,cy)?hDistort:1;
-      const ti=Math.round(theta/DTHETA), pi=Math.round(phi/DPHI);
-      cellList.push({ti,pi,G,dA,tc:tc_cell,H});
-      if (H===1) healthySet.add(`${ti},${pi}`);
+  const _xs = (eye === "left") ? -1 : 1;
+  if (alpha_c < 0.5) return null;
+  const gRad = gammaDeg * Math.PI / 180;
+  const lcx = _xs * alpha_c * Math.cos(gRad);
+  const lcy = alpha_c * Math.sin(gRad);
+  if (patient.damage(lcx,lcy) || patient.satellite(lcx,lcy) || inDisc(lcx,lcy)) return null;
+
+  const tn_center = thetaNodal(alpha_c);
+  const cache = getScoreCache(sigma, tn_center);
+  const {rows, dCutoff, phiSteps, cosTc2, sinTc2} = cache;
+  const sig2 = 2 * sigma * sigma;
+  const cosG = Math.cos(gRad), sinG = Math.sin(gRad);
+
+  // Accumulate directly — no cellList allocation
+  let mainScore = 0, F = 0, cellCount = 0;
+  // Track which (ti,pi) are healthy for fragmentation — use flat Uint8Array
+  const hbuf = _healthyBuf;
+  const usedTi = [];
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    const {tc, dA, ti, tc_rad, phiData} = rows[ri];
+    const cosTc1 = Math.cos(tc_rad), sinTc1 = Math.sin(tc_rad);
+    const Q_beta = beta < 0.01 ? 1 : Math.pow(quality(tc), beta);
+    let rowHasHealthy = false;
+
+    for (let pi = 0; pi < phiSteps; pi++) {
+      const cosP = phiData[pi * 2], sinP = phiData[pi * 2 + 1];
+      // gcDist inline: angle between (tc_rad, phi) and (tc2, gammaDeg)
+      const dot = cosTc1 * cosTc2 + sinTc1 * sinTc2 * (cosP * cosG + sinP * sinG);
+      const d = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+      if (d > dCutoff) continue;
+
+      const G = Math.exp(-d * d / sig2);
+      const cx = _xs * tc * cosP, cy = tc * sinP;
+      const _dmg = patient.damage(cx,cy) || patient.satellite(cx,cy) || inDisc(cx,cy);
+      const H = _dmg ? 0 : (patient.distort && patient.distort(cx,cy) ? hDistort : 1);
+
+      mainScore += H * Q_beta * G * dA;
+      cellCount++;
+
+      if (H === 1) {
+        hbuf[ti * _PI_MAX + pi] = 1;
+        rowHasHealthy = true;
+      }
+    }
+    if (rowHasHealthy) usedTi.push(ti);
+  }
+
+  // Fragmentation: count unhealthy neighbours for healthy cells
+  for (let ri = 0; ri < rows.length; ri++) {
+    const {dA, ti, tc_rad, phiData} = rows[ri];
+    const cosTc1 = Math.cos(tc_rad), sinTc1 = Math.sin(tc_rad);
+    for (let pi = 0; pi < phiSteps; pi++) {
+      if (!hbuf[ti * _PI_MAX + pi]) continue;
+      const cosP = phiData[pi * 2], sinP = phiData[pi * 2 + 1];
+      const dot = cosTc1 * cosTc2 + sinTc1 * sinTc2 * (cosP * cosG + sinP * sinG);
+      const d = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+      const G = Math.exp(-d * d / sig2);
+      const pip1 = (pi + 1) % phiSteps, pim1 = (pi - 1 + phiSteps) % phiSteps;
+      let unhealthy = 0;
+      if (ti > 0         && !hbuf[(ti-1)*_PI_MAX+pi])   unhealthy++;
+      if (ti < _TI_MAX-1 && !hbuf[(ti+1)*_PI_MAX+pi])   unhealthy++;
+      if (!hbuf[ti*_PI_MAX+pim1]) unhealthy++;
+      if (!hbuf[ti*_PI_MAX+pip1]) unhealthy++;
+      if (unhealthy) F += G * dA * unhealthy / 8;
     }
   }
-  let mainScore=0, F=0;
-  const phiSteps=Math.round(360/DPHI);
-  for (const {ti,pi,G,dA,tc,H} of cellList) {
-    const Q_beta=beta<0.01?1:Math.pow(quality(tc),beta);
-    mainScore+=H*Q_beta*G*dA;
-    if (H===1) {
-      const nb=[
-        `${ti-1},${pi}`,`${ti+1},${pi}`,
-        `${ti},${((pi-1)+phiSteps)%phiSteps}`,`${ti},${(pi+1)%phiSteps}`,
-        `${ti-1},${((pi-1)+phiSteps)%phiSteps}`,`${ti-1},${(pi+1)%phiSteps}`,
-        `${ti+1},${((pi-1)+phiSteps)%phiSteps}`,`${ti+1},${(pi+1)%phiSteps}`
-      ];
-      F+=G*dA*nb.filter(n=>!healthySet.has(n)).length/8;
-    }
-  }
-  return {mainScore,F,cellCount:cellList.length};
+
+  // Clear only the cells we touched
+  for (const ti of usedTi)
+    for (let pi = 0; pi < phiSteps; pi++)
+      hbuf[ti * _PI_MAX + pi] = 0;
+
+  return {mainScore, F, cellCount};
 }
 
 function findOptimal(patient, sigma, beta, mu, eye, hDistort=0.3) {
@@ -714,18 +843,26 @@ function secLabel(text) {
     textTransform:"uppercase",display:"block",marginBottom:"10px",fontFamily:"monospace",
     borderBottom:"1px solid #e8d0ec",paddingBottom:"6px"}}, text);
 }
-function sliderEl({label,min,max,step,val,color,note,fmt,onChange}) {
+function sliderEl({label,min,max,step,val,color,note,fmt,onChange,onLiveInput}) {
   const wrap=h("div",{style:{marginBottom:"12px",padding:"9px 12px",background:"#faf5fb",
     border:`1px solid ${color}50`,borderRadius:"4px"}});
+  const valSpan=h("span",{style:{fontSize:"13px",fontWeight:"700",color,fontFamily:"monospace"}},fmt(val));
   const row=h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"3px"}},
     h("span",{style:{fontSize:"12px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace"}},label),
-    h("span",{style:{fontSize:"13px",fontWeight:"700",color,fontFamily:"monospace"},id:`slv-${label.replace(/\W/g,'')}`},fmt(val))
+    valSpan
   );
   wrap.appendChild(row);
   if (note) wrap.appendChild(h("div",{style:{fontSize:"10px",color:"#6b7280",marginBottom:"4px",fontFamily:"monospace"}},note));
   const slClass=color==="#cc3300"?"sigma-slider":color==="#5b9bd5"?"beta-slider":color==="#d97706"?"hdist-slider":"mu-slider";
-  const inp=h("input",{type:"range",min,max,step,value:val,class:slClass,style:{width:"100%"}});
-  inp.addEventListener("input",e=>{ onChange(+e.target.value); });
+  const inp=h("input",{type:"range",min,max,step,value:String(val),class:slClass,style:{width:"100%"}});
+  // During drag: update display + patch state silently, no render()
+  inp.addEventListener("input",e=>{
+    const v=+e.target.value;
+    valSpan.textContent=fmt(v);
+    if (onLiveInput) onLiveInput(v);
+  });
+  // On release: commit with a full render
+  inp.addEventListener("change",e=>{ onChange(+e.target.value); });
   wrap.appendChild(inp);
   return wrap;
 }
@@ -1164,11 +1301,11 @@ let _rxMapCanvasRefEVL=null; // EV left map
 let _rxDebounce=null;
 
 // ─── Chunked optimizer (CSP-safe, non-blocking) ──────────────────────────────
-function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone) {
+function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone, onProgress, totalSteps) {
   const ac_min=thetaCenter(0.5), ac_max=thetaCenter(35);
   const acSteps=[];
   for(let ac=ac_min;ac<=ac_max;ac+=1.4) acSteps.push(ac);
-  const CHUNK=25; // ac values per chunk
+  const CHUNK=8; // smaller chunks = more progress updates
   let i=0;
   const candidates=[];
 
@@ -1182,6 +1319,7 @@ function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone)
         candidates.push({ac,g,raw:s.mainScore,F:s.F});
       }
     }
+    if(onProgress) onProgress(i, acSteps.length);
     if(i<acSteps.length) { setTimeout(runChunk,0); return; }
     // done — find best
     if(!candidates.length){ onDone({alpha_c:thetaCenter(1),alpha:thetaNodal(thetaCenter(1)),gamma:0,score:0}); return; }
@@ -1205,20 +1343,41 @@ function rxAutoRun(eye) {
                     : (appState.patientDataRight || appState.patientData);
   const patient = pd ? pd.patient : PATIENT_C;
   const setFn = isLeft ? setRxLeft : setRx;
-  setFn({status:"computing"});
+  // Compute total ac steps for progress tracking
+  const ac_min=thetaCenter(0.5), ac_max=thetaCenter(35);
+  let totalAcSteps=0;
+  for(let ac=ac_min;ac<=ac_max;ac+=1.4) totalAcSteps++;
+  const totalWork = 3 * totalAcSteps; // 3 betas
+  const progressPerBeta = new Array(3).fill(0);
+  const betaKeys = ['Aonly','Conly','weighted'];
+
+  const updateProgress = () => {
+    const completed = progressPerBeta.reduce((a,b)=>a+b,0);
+    const pct = Math.min(99, Math.round(completed / totalWork * 100));
+    setFn({status:"computing", progress:pct});
+  };
+
+  setFn({status:"computing", progress:0});
   const results = {};
   const betas = {Aonly:0.05, Conly:1, weighted:rx.beta};
   let done = 0;
-  Object.keys(betas).forEach(key => {
-    findOptimalChunked(patient, rx.sigma, betas[key], rx.mu, _eye, rx.hDistort??0.3, res => {
-      results[key] = res;
-      if (++done === 3) {
-        const oW = results.weighted;
-        setFn({committedSigma:rx.sigma,
-          optima:{Aonly:results.Aonly, Conly:results.Conly, weighted:oW},
-          alpha_c:oW.alpha_c, gamma:oW.gamma, status:"done"});
+  betaKeys.forEach((key, ki) => {
+    findOptimalChunked(patient, rx.sigma, betas[key], rx.mu, _eye, rx.hDistort??0.3,
+      res => {
+        results[key] = res;
+        progressPerBeta[ki] = totalAcSteps;
+        if (++done === 3) {
+          const oW = results.weighted;
+          setFn({committedSigma:rx.sigma,
+            optima:{Aonly:results.Aonly, Conly:results.Conly, weighted:oW},
+            alpha_c:oW.alpha_c, gamma:oW.gamma, status:"done", progress:100});
+        }
+      },
+      (stepsDone) => {
+        progressPerBeta[ki] = stepsDone;
+        updateProgress();
       }
-    });
+    );
   });
 }
 
@@ -1454,16 +1613,22 @@ function renderPrescription() {
   })();
 
   // Left col — sliders
+  // onCh mutates appState directly (no render); onChange commits via setRx (triggers render on mouseup only)
   const makeSlider=(label,min,max,step,val,color,note,fmt,onCh)=>{
-    return sliderEl({label,min,max,step,val,color,note,fmt,onChange:(v)=>{onCh(v);setRx({status:"stale"});if(appState.rxEV.status==="done")Object.assign(appState.rxEV,{status:"stale"});}});
+    return sliderEl({label,min,max,step,val,color,note,fmt,
+      // Live drag: mutate state directly, zero DOM rebuild
+      onLiveInput:(v)=>{ onCh(v); },
+      // Mouseup: full render to sync UI
+      onChange:(v)=>{ onCh(v); render(); }
+    });
   };
 
   const scoreParamsCard=h("div",{style:card()},
     secLabel("Score Parameters"),
-    makeSlider("σ — Task Radius",2,20,0.5,rx.sigma,"#cc3300","σ=5°≈reading · σ=20°≈large field · rings show 1σ and 2σ",v=>`${v}°`,v=>setRx({sigma:v})),
-    makeSlider("β — Acuity Emphasis",0.05,1,0.05,rx.beta,"#5b9bd5","β=0.05: near area-only · β=1: full acuity weight",v=>v.toFixed(2),v=>setRx({beta:v})),
-    makeSlider("μ — Fragmentation Penalty",0,1,0.05,rx.mu,"#6b0070","Penalizes landing zones near lesion edges",v=>v.toFixed(2),v=>setRx({mu:v})),
-    (patientDataR&&(patientDataR.distortCells?.size>0||patientDataR.distortDeg2>0))?makeSlider("ρ — Distortion Health",0,0.8,0.05,rx.hDistort??0.3,"#d97706","Partial H for metamorphopsia cells · 0=no contribution · 0.3=default · 0.8=near-healthy",v=>v.toFixed(2),v=>setRx({hDistort:v})):null
+    makeSlider("σ — Task Radius",2,20,0.5,rx.sigma,"#cc3300","σ=5°≈reading · σ=20°≈large field · rings show 1σ and 2σ",v=>`${v}°`,v=>{appState.rx.sigma=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
+    makeSlider("β — Acuity Emphasis",0.05,1,0.05,rx.beta,"#5b9bd5","β=0.05: near area-only · β=1: full acuity weight",v=>v.toFixed(2),v=>{appState.rx.beta=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
+    makeSlider("μ — Fragmentation Penalty",0,1,0.05,rx.mu,"#6b0070","Penalizes landing zones near lesion edges",v=>v.toFixed(2),v=>{appState.rx.mu=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
+    (patientDataR&&(patientDataR.distortCells?.size>0||patientDataR.distortDeg2>0))?makeSlider("ρ — Distortion Health",0,0.8,0.05,rx.hDistort??0.3,"#d97706","Partial H for metamorphopsia cells · 0=no contribution · 0.3=default · 0.8=near-healthy",v=>v.toFixed(2),v=>{appState.rx.hDistort=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}):null
   );
 
   const rxDone = (rx.status==="done"||rx.status==="computing"||rx.status==="stale") && rx.alpha_c>0;
@@ -1596,17 +1761,15 @@ function renderPrescription() {
     }))
   ):null;
 
-  const runBtnInner=isComp
-    ? h("span",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}},
-        h("span",{style:{display:"inline-block",width:"14px",height:"14px",border:"2px solid #93c5fd",
-          borderTopColor:"#2563eb",borderRadius:"50%",animation:"spin 0.8s linear infinite"}},""),
-        h("span",{class:"computing-dots"},"Computing"))
-    : rx.status==="stale"
-      ? "↺  Generate Prescription"
-      : "▶  Generate Prescription";
-  const runBtnBg  = isComp?"#f5eafa" : rx.status==="stale"?"#fff3cd" : "#6b0070";
-  const runBtnCol = isComp?"#6b0070" : rx.status==="stale"?"#7a3800" : "#ffffff";
-  const runBtnBdr = isComp?"1px solid #d8a8dc" : rx.status==="stale"?"1px solid #f0a000" : "1px solid #4a0050";
+  const pct = rx.progress??0;
+  const runBtnInner = isComp
+    ? `▶  Generate Prescription  ${pct}%`
+    : rx.status==="stale" ? "↺  Generate Prescription" : "▶  Generate Prescription";
+  const runBtnBg  = isComp
+    ? `linear-gradient(90deg, #8b2090 ${pct}%, #d8b8dc ${pct}%)`
+    : rx.status==="stale"?"#fff3cd" : "#6b0070";
+  const runBtnCol = isComp?"#ffffff" : rx.status==="stale"?"#7a3800" : "#ffffff";
+  const runBtnBdr = isComp?"1px solid #8b2090" : rx.status==="stale"?"1px solid #f0a000" : "1px solid #4a0050";
   const runBtn=h("button",{
     style:btnStyle({width:"100%",padding:"12px",borderRadius:"4px",fontSize:"13px",fontWeight:"700",
       background:runBtnBg, color:runBtnCol, border:runBtnBdr,
@@ -1757,9 +1920,7 @@ function renderPrescription() {
 
   const leftCtrl=h("div",{style:colStyle},
     scoreParamsCard, runBtn, runStatus,
-    isComp?h("div",{style:{...card(),background:"#f5eafa",border:"1px solid #d8a8dc",
-      textAlign:"center",padding:"16px",fontSize:"13px",color:"#6b0070",fontFamily:"monospace"}},
-      h("span",{class:"computing-dots"},"Computing prescription")):null
+null
   );
 
   // rxCard removed — manualCard (Option C) is the unified prescription component
@@ -1838,17 +1999,19 @@ function renderPrescription() {
       const alphaL=rxL.alpha_c>0?thetaNodal(rxL.alpha_c):0;
 
       const mkSlL=(label,min,max,step,val,color,note,fmt,onCh)=>sliderEl({label,min,max,step,val,color,note,fmt,
-        onChange:v=>{onCh(v);setRxLeft({status:"stale"});}});
+        onLiveInput:v=>{ onCh(v); },
+        onChange:v=>{ onCh(v); render(); }});
 
       const leftSlidersCard=h("div",{style:card()},
         secLabel("Score Parameters"),
-        mkSlL("σ — Task Radius",2,20,0.5,rxL.sigma,"#cc3300","Task radius",v=>`${v}°`,v=>setRxLeft({sigma:v})),
-        mkSlL("β — Acuity Emphasis",0.05,1,0.05,rxL.beta,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>setRxLeft({beta:v})),
-        mkSlL("μ — Fragmentation Penalty",0,1,0.05,rxL.mu,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>setRxLeft({mu:v})),
+        mkSlL("σ — Task Radius",2,20,0.5,rxL.sigma,"#cc3300","Task radius",v=>`${v}°`,v=>{appState.rxLeft.sigma=v;appState.rxLeft.status="stale";}),
+        mkSlL("β — Acuity Emphasis",0.05,1,0.05,rxL.beta,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>{appState.rxLeft.beta=v;appState.rxLeft.status="stale";}),
+        mkSlL("μ — Fragmentation Penalty",0,1,0.05,rxL.mu,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>{appState.rxLeft.mu=v;appState.rxLeft.status="stale";}),
         (patientDataL&&(patientDataL.distortCells?.size>0||patientDataL.distortDeg2>0))
           ?sliderEl({label:"ρ — Distortion Health",min:0,max:0.8,step:0.05,val:rxL.hDistort??0.3,
               color:"#d97706",note:"Partial H for distortion cells",fmt:v=>v.toFixed(2),
-              onChange:v=>setRxLeft({hDistort:v,status:"stale"})})
+              onLiveInput:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; },
+              onChange:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; render(); }})
           :null
       );
 
@@ -1947,17 +2110,19 @@ function renderPrescription() {
       const omega=evRx.omega??0.5;
 
       const mkSlEV=(label,min,max,step,val,color,note,fmt,onCh)=>sliderEl({label,min,max,step,val,color,note,fmt,
-        onChange:v=>{onCh(v);setRxEV({status:"stale"});}});
+        onLiveInput:v=>{ onCh(v); },
+        onChange:v=>{ onCh(v); render(); }});
 
       const omegaSlider=sliderEl({label:"ω — Right Eye Weight",min:0,max:1,step:0.05,val:omega,
         color:"#7c3aed",note:"ω=1: right only · ω=0.5: equal · ω=0: left only",
         fmt:v=>v.toFixed(2),
-        onChange:v=>{appState.rxEV.omega=v;setRxEV({status:"stale"});}});
-      const evSigmaSlider=mkSlEV("σ — Task Radius",2,20,0.5,evRx.sigma??5,"#cc3300","Task radius",v=>`${v}°`,v=>setRxEV({sigma:v}));
-      const evBetaSlider= mkSlEV("β — Acuity Emphasis",0.05,1,0.05,evRx.beta??0.5,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>setRxEV({beta:v}));
-      const evMuSlider=   mkSlEV("μ — Fragmentation Penalty",0,1,0.05,evRx.mu??0.2,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>setRxEV({mu:v}));
+        onLiveInput:v=>{ appState.rxEV.omega=v; appState.rxEV.status="stale"; },
+        onChange:v=>{ appState.rxEV.omega=v; render(); }});
+      const evSigmaSlider=mkSlEV("σ — Task Radius",2,20,0.5,evRx.sigma??5,"#cc3300","Task radius",v=>`${v}°`,v=>{appState.rxEV.sigma=v;appState.rxEV.status="stale";});
+      const evBetaSlider= mkSlEV("β — Acuity Emphasis",0.05,1,0.05,evRx.beta??0.5,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>{appState.rxEV.beta=v;appState.rxEV.status="stale";});
+      const evMuSlider=   mkSlEV("μ — Fragmentation Penalty",0,1,0.05,evRx.mu??0.2,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>{appState.rxEV.mu=v;appState.rxEV.status="stale";});
       const evRhoSlider=(patientDataR&&(patientDataR.distortDeg2>0||patientDataR.distortCells?.size>0))||(patientDataL&&(patientDataL.distortDeg2>0||patientDataL.distortCells?.size>0))
-        ?mkSlEV("ρ — Distortion Health",0,0.8,0.05,evRx.hDistort??0.3,"#d97706","Partial H for distortion cells",v=>v.toFixed(2),v=>setRxEV({hDistort:v}))
+        ?mkSlEV("ρ — Distortion Health",0,0.8,0.05,evRx.hDistort??0.3,"#d97706","Partial H for distortion cells",v=>v.toFixed(2),v=>{appState.rxEV.hDistort=v;appState.rxEV.status="stale";})
         :null;
 
       const runBtnEV=h("button",{
