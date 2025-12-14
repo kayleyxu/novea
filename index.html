@@ -8,7 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:#eceaf5;color:#1a0a1e;font-family:monospace;min-height:100vh;font-size:14px;overscroll-behavior:none;}
+  html,body{height:100%;overflow:hidden;}
+  body{background:#eceaf5;color:#1a0a1e;font-family:monospace;font-size:14px;overscroll-behavior:none;touch-action:pan-y;}
+  #app{height:100%;display:flex;flex-direction:column;overflow:hidden;}
   input[type=range]{-webkit-user-select:none;user-select:none;}
   button{font-family:monospace;cursor:pointer;}
   input[type=range]{width:100%;}
@@ -985,21 +987,22 @@ function renderHome() {
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderDiagInstructions() {
   const d=appState.diag;
-  const wrap=h("div",{style:{maxWidth:"640px",margin:"0 auto",padding:"24px 20px"}});
+  // Tightened spacing so all content + BEGIN button fits iPad Air landscape (~718px usable)
+  const wrap=h("div",{style:{maxWidth:"900px",margin:"0 auto",padding:"12px 32px"}});
 
-  wrap.appendChild(h("div",{style:{marginBottom:"22px"}},
-    h("div",{style:{fontSize:"11px",color:"#6b0070",letterSpacing:"3px",textTransform:"uppercase",marginBottom:"5px",fontFamily:"monospace"}},"STEP 1 OF 2 — DIAGNOSTIC"),
+  wrap.appendChild(h("div",{style:{marginBottom:"10px"}},
+    h("div",{style:{fontSize:"11px",color:"#6b0070",letterSpacing:"3px",textTransform:"uppercase",marginBottom:"3px",fontFamily:"monospace"}},"STEP 1 OF 2 — DIAGNOSTIC"),
     h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0f172a",letterSpacing:"-0.5px",fontFamily:"monospace"}},"Amsler Grid · Scotoma Mapping"),
-    h("div",{style:{fontSize:"11px",color:"#6b7280",marginTop:"4px",fontFamily:"monospace"}},
+    h("div",{style:{fontSize:"11px",color:"#6b7280",marginTop:"2px",fontFamily:"monospace"}},
       "Digital scotoma tracing · PocDoc (PMC11039616) · 3D border-trace Amsler (PubMed 15933591) · 30×30 grid ±15° · No special device")
   ));
 
   // Eye selector
-  wrap.appendChild(h("div",{style:{marginBottom:"18px"}},
-    h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"2px",marginBottom:"8px",fontFamily:"monospace"}},"SELECT EYE TO TEST"),
+  wrap.appendChild(h("div",{style:{marginBottom:"10px"}},
+    h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"2px",marginBottom:"6px",fontFamily:"monospace"}},"SELECT EYE TO TEST"),
     h("div",{style:{display:"flex",gap:"10px"}},
       ...["right","left"].map(e=>h("button",{
-        style:btnStyle({flex:"1",padding:"13px 0",
+        style:btnStyle({flex:"1",padding:"10px 0",
           background:d.eye===e?"#6b0070":"#ffffff",
           color:d.eye===e?"#ffffff":"#3d0042",
           border:`1px solid ${d.eye===e?"#6b0070":"#e8d0ec"}`}),
@@ -1016,30 +1019,30 @@ function renderDiagInstructions() {
     ["Fixate",   ()=>"Keep your gaze LOCKED on the RED CENTER DOT at all times"],
     ["Lighting", ()=>"Even room light, no glare on screen"],
   ];
-  const prepBox=h("div",{style:{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"18px",marginBottom:"14px"}},
-    h("div",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",letterSpacing:"2px",marginBottom:"12px",fontFamily:"monospace"}},"PREPARATION"),
-    ...prepItems.map(([k,vfn])=>h("div",{style:{display:"flex",gap:"12px",marginBottom:"9px",alignItems:"flex-start"}},
+  const prepBox=h("div",{style:{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"10px 14px",marginBottom:"10px"}},
+    h("div",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",letterSpacing:"2px",marginBottom:"8px",fontFamily:"monospace"}},"PREPARATION"),
+    ...prepItems.map(([k,vfn])=>h("div",{style:{display:"flex",gap:"12px",marginBottom:"5px",alignItems:"flex-start"}},
       h("span",{style:{minWidth:"58px",fontSize:"10px",color:"#6b0070",fontWeight:"700",fontFamily:"monospace",paddingTop:"1px"}},k),
-      h("span",{style:{fontSize:"12px",color:"#374151",lineHeight:"1.6",fontFamily:"monospace"}},vfn())
+      h("span",{style:{fontSize:"12px",color:"#374151",lineHeight:"1.4",fontFamily:"monospace"}},vfn())
     ))
   );
   wrap.appendChild(prepBox);
 
   // Three modes
-  const modesBox=h("div",{style:{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"18px",marginBottom:"18px"}},
-    h("div",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",letterSpacing:"2px",marginBottom:"12px",fontFamily:"monospace"}},"THREE DRAWING MODES ON THE GRID"),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr",gap:"10px"}},
-      h("div",{style:{background:"#f8fafc",border:"1px solid #dcfce7",borderRadius:"5px",padding:"12px"}},
-        h("div",{style:{fontSize:"11px",color:"#c2410c",fontWeight:"700",marginBottom:"5px",fontFamily:"monospace"}},"⟳ BOUNDARY TRACE (draw along the scotoma edge)"),
-        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.7",fontFamily:"monospace"}},
+  const modesBox=h("div",{style:{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"10px 14px",marginBottom:"12px"}},
+    h("div",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",letterSpacing:"2px",marginBottom:"8px",fontFamily:"monospace"}},"THREE DRAWING MODES ON THE GRID"),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr",gap:"6px"}},
+      h("div",{style:{background:"#f8fafc",border:"1px solid #dcfce7",borderRadius:"5px",padding:"8px 10px"}},
+        h("div",{style:{fontSize:"11px",color:"#c2410c",fontWeight:"700",marginBottom:"3px",fontFamily:"monospace"}},"⟳ BOUNDARY TRACE (draw along the scotoma edge)"),
+        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.5",fontFamily:"monospace"}},
           "Click and drag to trace a curve along the edge of where lines disappear. The curve stroke itself is marked as damaged — draw multiple strokes to outline the full region.")),
-      h("div",{style:{background:"#f8fafc",border:"1px solid #fee2e2",borderRadius:"5px",padding:"12px"}},
-        h("div",{style:{fontSize:"11px",color:"#ef4444",fontWeight:"700",marginBottom:"5px",fontFamily:"monospace"}},"■ PAINT SCOTOMA (for small or peripheral patches)"),
-        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.7",fontFamily:"monospace"}},
+      h("div",{style:{background:"#f8fafc",border:"1px solid #fee2e2",borderRadius:"5px",padding:"8px 10px"}},
+        h("div",{style:{fontSize:"11px",color:"#ef4444",fontWeight:"700",marginBottom:"3px",fontFamily:"monospace"}},"■ PAINT SCOTOMA (for small or peripheral patches)"),
+        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.5",fontFamily:"monospace"}},
           "Drag directly over cells that look dark or missing. Use for small scotomas at ≥5° eccentricity where you can still see the surrounding grid.")),
-      h("div",{style:{background:"#f8fafc",border:"1px solid #4a3010",borderRadius:"5px",padding:"12px"}},
-        h("div",{style:{fontSize:"11px",color:"#f59e0b",fontWeight:"700",marginBottom:"5px",fontFamily:"monospace"}},"〰 PAINT DISTORTION (wavy / metamorphopsia)"),
-        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.7",fontFamily:"monospace"}},
+      h("div",{style:{background:"#f8fafc",border:"1px solid #4a3010",borderRadius:"5px",padding:"8px 10px"}},
+        h("div",{style:{fontSize:"11px",color:"#f59e0b",fontWeight:"700",marginBottom:"3px",fontFamily:"monospace"}},"〰 PAINT DISTORTION (wavy / metamorphopsia)"),
+        h("div",{style:{fontSize:"11px",color:"#374151",lineHeight:"1.5",fontFamily:"monospace"}},
           "Drag over cells where straight grid lines look bent or wavy. Does not mark as scotoma — recorded separately."))
     )
   );
@@ -2212,7 +2215,7 @@ function renderApp() {
   const appEl=document.getElementById("app");
 
   // App header
-  const header=h("div",{style:{background:"#ffffff",borderBottom:"1px solid #e8d0ec",boxShadow:"0 1px 6px rgba(107,0,112,0.10)",padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+  const header=h("div",{id:"app-header",style:{background:"#ffffff",borderBottom:"1px solid #e8d0ec",boxShadow:"0 1px 6px rgba(107,0,112,0.10)",padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:"0"}},
     h("div",null,
       h("span",{style:{fontSize:"28px",fontWeight:"900",color:"#6b0070",letterSpacing:"-1px",fontFamily:"monospace"}},"Novea"),
       h("span",{style:{fontSize:"10px",color:"#c0a0c8",marginLeft:"14px",fontFamily:"monospace",fontWeight:"400"}},"PRL Prescription Tool")
@@ -2249,7 +2252,10 @@ function renderApp() {
 
   appEl.innerHTML="";
   appEl.appendChild(header);
-  appEl.appendChild(content);
+  const contentWrap=document.createElement("div");
+  contentWrap.style.cssText="flex:1 1 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;min-height:0;";
+  contentWrap.appendChild(content);
+  appEl.appendChild(contentWrap);
   // Importing overlay
   if (appState.importing) {
     const overlay=h("div",{style:{position:"fixed",inset:"0",background:"rgba(107,0,112,0.18)",
