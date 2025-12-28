@@ -1146,9 +1146,9 @@ function renderDiagDraw() {
   );
 
   // Canvas area
-  const canvasWrap=h("div",{style:{position:"relative",width:"min(520px,86vw)",height:"min(520px,62vh)"}});
-  const mainCanvas=h("canvas",{width:CANVAS_PX,height:CANVAS_PX,style:{display:"block",width:"min(520px,86vw)",height:"min(520px,62vh)",imageRendering:"crisp-edges"}});
-  const overlayCanvas=h("canvas",{width:CANVAS_PX,height:CANVAS_PX,style:{position:"absolute",top:"0",left:"0",display:"block",width:"min(520px,86vw)",height:"min(520px,62vh)",cursor:d.tool==="erase"?"cell":"crosshair",imageRendering:"crisp-edges"}});
+  const canvasWrap=h("div",{style:{position:"relative",width:"min(520px,86vw)",height:"min(520px,86vw)"}});
+  const mainCanvas=h("canvas",{width:CANVAS_PX,height:CANVAS_PX,style:{display:"block",width:"min(520px,86vw)",height:"min(520px,86vw)",imageRendering:"crisp-edges"}});
+  const overlayCanvas=h("canvas",{width:CANVAS_PX,height:CANVAS_PX,style:{position:"absolute",top:"0",left:"0",display:"block",width:"min(520px,86vw)",height:"min(520px,86vw)",cursor:d.tool==="erase"?"cell":"crosshair",imageRendering:"crisp-edges"}});
   canvasWrap.appendChild(mainCanvas);
   canvasWrap.appendChild(overlayCanvas);
 
