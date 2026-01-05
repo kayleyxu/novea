@@ -489,6 +489,7 @@ let appState = {
   mapZoomL:  {scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
   mapZoomEVR:{scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
   mapZoomEVL:{scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
+  mapZoneVis:{weighted:true, Conly:false, Aonly:false},
 };
 
 function setState(patch) {
@@ -606,10 +607,11 @@ function drawRetinalMap(canvas, patient, alpha, gamma, sigma, committedSigma, op
       ctx.fillText(label,lx,ly);
     }
   };
+  const _vis=appState.mapZoneVis;
   if (optima) {
-    if (optima.Conly)    drawZone(optima.Conly.alpha,    optima.Conly.gamma,    "#1e90ff",null,[0,60,130]);
-    if (optima.Aonly)    drawZone(optima.Aonly.alpha,    optima.Aonly.gamma,    "#b0b0b0",null,[50,50,50]);
-    if (optima.weighted) drawZone(optima.weighted.alpha, optima.weighted.gamma, "#ff6b00",null,[110,60,0]);
+    if (optima.Conly    && _vis.Conly)    drawZone(optima.Conly.alpha,    optima.Conly.gamma,    "#1e90ff",null,[0,60,130]);
+    if (optima.Aonly    && _vis.Aonly)    drawZone(optima.Aonly.alpha,    optima.Aonly.gamma,    "#b0b0b0",null,[50,50,50]);
+    if (optima.weighted && _vis.weighted) drawZone(optima.weighted.alpha, optima.weighted.gamma, "#ff6b00",null,[110,60,0]);
   } else {
     drawZone(alpha,gamma,"#ff6b00",null,[110,60,0]);
   }
@@ -1816,33 +1818,80 @@ function renderPrescription() {
       h("span",{style:{fontSize:"11px",color:"#64748b",marginLeft:"4px"}},desc)
     )
   );
-  const legendDiv=h("div",{style:{marginTop:"14px",width:"100%",maxWidth:"480px"}},
-    h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#6b0070",
-      fontFamily:"monospace",marginBottom:"6px",textTransform:"uppercase"}},"Map Legend"),
-    h("div",{style:{background:"#ffffff",border:"1px solid #e8d0ec",borderRadius:"8px",
-      padding:"10px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0px"}},
-      // Landing zones
-      h("div",{style:{gridColumn:"1/-1",fontSize:"11px",fontWeight:"700",color:"#374151",
-        fontFamily:"monospace",padding:"4px 0 6px",borderBottom:"1px solid #e2e8f0",marginBottom:"4px"}},
-        "Landing Zones"),
-      mkRow("#ff6b00",false,"PRL★","Optimal for your β/σ/μ"),
-      mkRow("#1e90ff",false,"β=1","Acuity-weighted optimum"),
-      mkRow("#888888",false,"β=0.05","Near area-only optimum"),
-      h("div",{style:{gridColumn:"1/-1",fontSize:"10px",color:"#94a3b8",fontFamily:"monospace",
-        padding:"6px 0 2px",marginTop:"4px",borderTop:"1px solid #f1f5f9"}},"Solid ring = 1σ task footprint · Dashed = 2σ · Arrow = direction from fovea"),
-      // Retinal tissue
-      h("div",{style:{gridColumn:"1/-1",fontSize:"11px",fontWeight:"700",color:"#374151",
-        fontFamily:"monospace",padding:"8px 0 6px",borderBottom:"1px solid #e2e8f0",marginBottom:"4px"}},"Retinal Tissue"),
-      ...[["#22c55e","Healthy retina"],["#ef4444","GA lesion (scotoma)"],["#f97316","Satellite lesion"],["#d97706","Distortion zone"],["#c8a96e","Optic disc"]].map(
-        ([col,lbl])=>h("div",{style:{display:"flex",alignItems:"center",gap:"6px",padding:"3px 0",fontSize:"12px",fontFamily:"monospace",color:"#374151"}},
-          h("span",{style:{width:"12px",height:"12px",borderRadius:"3px",background:col,display:"inline-block",flexShrink:"0"}}),lbl)
+  // Landing Zones legend — below map, with toggle buttons
+  const _zv = appState.mapZoneVis;
+  const mkToggle=(key, color, label, desc)=>{
+    const on = _zv[key];
+    const btn = h("div",{
+      style:{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",
+        borderBottom:"1px solid #f1f5f9",fontFamily:"monospace",cursor:"pointer",
+        opacity: on?"1":"0.4", transition:"opacity 0.15s"},
+      onclick:()=>{
+        appState.mapZoneVis[key]=!appState.mapZoneVis[key];
+        render();
+      }
+    },
+      // Checkbox indicator
+      h("div",{style:{width:"32px",flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center"}},
+        (()=>{
+          const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+          svg.setAttribute("width","18"); svg.setAttribute("height","18"); svg.setAttribute("viewBox","0 0 18 18");
+          // Box
+          const box=document.createElementNS("http://www.w3.org/2000/svg","rect");
+          box.setAttribute("x","1"); box.setAttribute("y","1"); box.setAttribute("width","16"); box.setAttribute("height","16");
+          box.setAttribute("rx","3"); box.setAttribute("fill", on?color:"none");
+          box.setAttribute("stroke",color); box.setAttribute("stroke-width","2");
+          svg.appendChild(box);
+          // Checkmark when active
+          if(on){
+            const tick=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+            tick.setAttribute("points","4,9 7.5,13 14,5");
+            tick.setAttribute("fill","none"); tick.setAttribute("stroke","#ffffff");
+            tick.setAttribute("stroke-width","2.2"); tick.setAttribute("stroke-linecap","round");
+            tick.setAttribute("stroke-linejoin","round");
+            svg.appendChild(tick);
+          }
+          return svg;
+        })()
+      ),
+      h("div",{style:{flex:"1"}},
+        h("span",{style:{fontSize:"12px",fontWeight:"700",color: on?"#1e293b":"#94a3b8"}},label),
+        h("span",{style:{fontSize:"11px",color:"#64748b",marginLeft:"4px"}},desc)
       )
+    );
+    return btn;
+  };
+  const legendDiv=h("div",{style:{marginTop:"14px",width:"100%",maxWidth:"480px"}},
+    h("div",{style:{background:"#ffffff",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"10px 14px"}},
+      h("div",{style:{fontSize:"11px",fontWeight:"700",color:"#374151",fontFamily:"monospace",
+        paddingBottom:"6px",marginBottom:"4px",borderBottom:"1px solid #e2e8f0"}},"Landing Zones"),
+      mkToggle("weighted","#ff6b00","PRL★","Optimal for your β/σ/μ"),
+      mkToggle("Conly",   "#1e90ff","β=1", "Acuity-weighted optimum"),
+      mkToggle("Aonly",   "#888888","β=0.05","Near area-only optimum"),
+      h("div",{style:{fontSize:"10px",color:"#94a3b8",fontFamily:"monospace",
+        padding:"6px 0 2px",marginTop:"4px",borderTop:"1px solid #f1f5f9"}},
+        "Solid ring = 1σ task footprint · Dashed = 2σ · Arrow = direction from fovea")
     )
   );
 
-  const mapBlock=h("div",{class:"rx-map-block",style:{display:"flex",flexDirection:"column",alignItems:"center"}},
-    _rmb.block,
-    legendDiv
+  // Retinal Tissue legend — to the right of the map, aligned with top of canvas
+  // label (~27px) + zoomBar (~38px) + gap = ~65px offset to level with map top
+  const tissueLegend=h("div",{style:{background:"#ffffff",border:"1px solid #e8d0ec",borderRadius:"8px",
+    padding:"10px 14px",alignSelf:"flex-start",marginTop:"245px"}},
+    h("div",{style:{fontSize:"11px",fontWeight:"700",color:"#374151",fontFamily:"monospace",
+      paddingBottom:"6px",marginBottom:"4px",borderBottom:"1px solid #e2e8f0"}},"Retinal Tissue"),
+    ...[["#22c55e","Healthy retina"],["#ef4444","GA lesion (scotoma)"],["#f97316","Satellite lesion"],["#d97706","Distortion zone"],["#c8a96e","Optic disc"]].map(
+      ([col,lbl])=>h("div",{style:{display:"flex",alignItems:"center",gap:"6px",padding:"3px 0",fontSize:"12px",fontFamily:"monospace",color:"#374151"}},
+        h("span",{style:{width:"12px",height:"12px",borderRadius:"3px",background:col,display:"inline-block",flexShrink:"0"}}),lbl)
+    )
+  );
+
+  const mapBlock=h("div",{class:"rx-map-block",style:{display:"flex",flexDirection:"row",alignItems:"flex-start",gap:"12px"}},
+    h("div",{style:{display:"flex",flexDirection:"column",alignItems:"center"}},
+      _rmb.block,
+      legendDiv
+    ),
+    tissueLegend
   );
 
   // Controls: two sub-columns side by side
@@ -1922,8 +1971,7 @@ function renderPrescription() {
   })();
 
   const leftCtrl=h("div",{style:colStyle},
-    scoreParamsCard, runBtn, runStatus,
-null
+    scoreParamsCard, runBtn, runStatus, formulaCard
   );
 
   // rxCard removed — manualCard (Option C) is the unified prescription component
@@ -1973,7 +2021,7 @@ null
   ):null;
 
   const rightCtrl=h("div",{style:colStyle},
-    manualCard, detailsCard, diagInputCard, formulaCard
+    manualCard, detailsCard, diagInputCard
   );
 
   const sideBar=h("div",{class:"rx-sidebar",style:{display:"flex",gap:"12px",alignItems:"flex-start",flex:"0 0 auto",minWidth:"340px",maxWidth:"500px"}},
