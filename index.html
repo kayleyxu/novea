@@ -1820,42 +1820,58 @@ function renderPrescription() {
   );
   // Landing Zones legend — below map, with toggle buttons
   const _zv = appState.mapZoneVis;
+
+  // Build SVG checkbox — shared helper
+  const _mkCheckSVG=(color, on)=>{
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("width","18"); svg.setAttribute("height","18"); svg.setAttribute("viewBox","0 0 18 18");
+    const box=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    box.setAttribute("x","1"); box.setAttribute("y","1"); box.setAttribute("width","16"); box.setAttribute("height","16");
+    box.setAttribute("rx","3"); box.setAttribute("fill",on?color:"none");
+    box.setAttribute("stroke",color); box.setAttribute("stroke-width","2");
+    svg.appendChild(box);
+    if(on){
+      const tick=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+      tick.setAttribute("points","4,9 7.5,13 14,5");
+      tick.setAttribute("fill","none"); tick.setAttribute("stroke","#ffffff");
+      tick.setAttribute("stroke-width","2.2"); tick.setAttribute("stroke-linecap","round");
+      tick.setAttribute("stroke-linejoin","round");
+      svg.appendChild(tick);
+    }
+    return svg;
+  };
+
   const mkToggle=(key, color, label, desc)=>{
     const on = _zv[key];
-    const btn = h("div",{
+    const svgWrap=h("div",{style:{width:"32px",flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center"}},
+      _mkCheckSVG(color, on));
+    const labelSpan=h("span",{style:{fontSize:"12px",fontWeight:"700",color:on?"#1e293b":"#94a3b8"}},label);
+    const btn=h("div",{
       style:{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",
         borderBottom:"1px solid #f1f5f9",fontFamily:"monospace",cursor:"pointer",
-        opacity: on?"1":"0.4", transition:"opacity 0.15s"},
+        opacity:on?"1":"0.4", transition:"opacity 0.15s"},
       onclick:()=>{
-        appState.mapZoneVis[key]=!appState.mapZoneVis[key];
-        render();
+        const nowOn = !appState.mapZoneVis[key];
+        appState.mapZoneVis[key] = nowOn;
+        // Patch DOM in-place — no render(), no scroll reset
+        btn.style.opacity = nowOn?"1":"0.4";
+        svgWrap.innerHTML="";
+        svgWrap.appendChild(_mkCheckSVG(color, nowOn));
+        labelSpan.style.color = nowOn?"#1e293b":"#94a3b8";
+        // Redraw map canvas only
+        if (_rxMapCanvasRef) {
+          const rx2=appState.rx;
+          const pd2=appState.patientDataRight||appState.patientData;
+          const pt2=pd2?pd2.patient:PATIENT_C;
+          const show=(rx2.status==="done"||rx2.status==="computing"||rx2.status==="stale")&&rx2.alpha_c>0;
+          drawRetinalMap(_rxMapCanvasRef,pt2,show?thetaNodal(rx2.alpha_c):0,
+            show?rx2.gamma:0,rx2.sigma,rx2.committedSigma,show?rx2.optima:null,480,pd2?pd2.eye:"right");
+        }
       }
     },
-      // Checkbox indicator
-      h("div",{style:{width:"32px",flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center"}},
-        (()=>{
-          const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
-          svg.setAttribute("width","18"); svg.setAttribute("height","18"); svg.setAttribute("viewBox","0 0 18 18");
-          // Box
-          const box=document.createElementNS("http://www.w3.org/2000/svg","rect");
-          box.setAttribute("x","1"); box.setAttribute("y","1"); box.setAttribute("width","16"); box.setAttribute("height","16");
-          box.setAttribute("rx","3"); box.setAttribute("fill", on?color:"none");
-          box.setAttribute("stroke",color); box.setAttribute("stroke-width","2");
-          svg.appendChild(box);
-          // Checkmark when active
-          if(on){
-            const tick=document.createElementNS("http://www.w3.org/2000/svg","polyline");
-            tick.setAttribute("points","4,9 7.5,13 14,5");
-            tick.setAttribute("fill","none"); tick.setAttribute("stroke","#ffffff");
-            tick.setAttribute("stroke-width","2.2"); tick.setAttribute("stroke-linecap","round");
-            tick.setAttribute("stroke-linejoin","round");
-            svg.appendChild(tick);
-          }
-          return svg;
-        })()
-      ),
+      svgWrap,
       h("div",{style:{flex:"1"}},
-        h("span",{style:{fontSize:"12px",fontWeight:"700",color: on?"#1e293b":"#94a3b8"}},label),
+        labelSpan,
         h("span",{style:{fontSize:"11px",color:"#64748b",marginLeft:"4px"}},desc)
       )
     );
