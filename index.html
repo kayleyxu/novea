@@ -64,6 +64,36 @@
 <div id="app"></div>
 
 <script>
+/**
+ * @file AMD App v7 — PRL Prescription Tool
+ *
+ * WHAT THIS APP DOES
+ * ------------------
+ * This app helps eye doctors find the best place on a patient's retina
+ * (called the Preferred Retinal Locus, or PRL) to aim light at — for
+ * patients who have lost central vision due to conditions like AMD
+ * (Age-related Macular Degeneration).
+ *
+ * HOW IT WORKS — THREE STEPS
+ * ---------------------------
+ * 1. DIAGNOSTIC  — The patient stares at a grid and marks the areas they
+ *    can't see (scotoma) or where lines look wavy (distortion).
+ * 2. MASK BUILD  — The app converts those grid markings into a precise
+ *    damage map of the retina.
+ * 3. PRESCRIPTION — The app searches the healthy retina for the best
+ *    landing zone and returns an eccentricity (how far from center) and
+ *    azimuth (which direction) for the metasurface lens prescription.
+ *
+ * CODE STRUCTURE
+ * --------------
+ * • Optics Math      — Converts between visual angles and retina coordinates
+ * • Mask Builder     — Turns patient drawings into a retinal damage bitmap
+ * • Scoring Engine   — Grades each candidate PRL location (higher = better)
+ * • App State        — One object (appState) holds everything the UI needs
+ * • Render Engine    — Builds the HTML from scratch whenever state changes
+ * • Screen Renderers — One function per screen: Home, Diagnostic, Prescription
+ */
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED OPTICS MATH
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -74,23 +104,84 @@ const MASK_N = Math.ceil(MASK_RANGE / MASK_RES) * 2 + 2;
 const K_EYE = (17 - 12) / 12;
 const DTHETA = 1.0, DPHI = 3.0, E2 = 2.0;
 
+/**
+ * Checks whether a retinal coordinate (x, y) falls inside the optic disc —
+ * the blind spot where the optic nerve connects to the back of the eye.
+ * We never aim the PRL here because there are no photoreceptors.
+ * The disc is modelled as an ellipse at its known anatomical position.
+ *
+ * @param {number} x - Horizontal retinal position in degrees (θ_c space)
+ * @param {number} y - Vertical retinal position in degrees (θ_c space)
+ * @returns {boolean} true if the point is inside the optic disc
+ */
 function inDisc(x, y) {
   return ((x-DISC_CX)/DISC_RX)**2 + ((y-DISC_CY)/DISC_RY)**2 < 1;
 }
+/**
+ * Returns a quality score (0 to 1) for a retinal location based on how
+ * far it is from the fovea (center). Cells closer to the fovea score
+ * higher because they have more densely packed photoreceptors (cones)
+ * and therefore better visual acuity.
+ *
+ * Formula: Q = E2 / (E2 + θ_c)  where E2 = 2° (half-resolution eccentricity)
+ *
+ * @param {number} tc - Distance from fovea in θ_c degrees
+ * @returns {number} Quality score between 0 (far) and 1 (near fovea)
+ */
 function quality(tc) { return E2 / (E2 + Math.max(tc, 0)); }
+/**
+ * Converts a nodal angle (θ_n) to a center angle (θ_c).
+ * The eye bends light through a nodal point, so the angle you see
+ * (θ_n, measured from the nodal point) is slightly different from
+ * the angle that lands on the retina (θ_c, measured from the eye center).
+ * This conversion uses the eye's geometry constant K_EYE.
+ *
+ * @param {number} tn_deg - Visual angle in nodal degrees (θ_n)
+ * @returns {number} Retinal angle in center degrees (θ_c)
+ */
 function thetaCenter(tn_deg) {
   const tn = tn_deg * Math.PI / 180;
   return tn_deg + Math.asin(Math.max(-1, Math.min(1, K_EYE * Math.sin(tn)))) * 180 / Math.PI;
 }
+/**
+ * Calculates how fast θ_c changes relative to θ_n at a given angle.
+ * This is the derivative dθ_c/dθ_n — needed to correctly calculate
+ * the area of a small patch of retina (used in sphereArea).
+ * Think of it as a "stretching factor" between visual space and retinal space.
+ *
+ * @param {number} tn_deg - Visual angle in nodal degrees
+ * @returns {number} Rate of change dθ_c/dθ_n (dimensionless)
+ */
 function dTc_dTn(tn_deg) {
   const tn = tn_deg * Math.PI / 180;
   const s = K_EYE * Math.sin(tn);
   return 1 + K_EYE * Math.cos(tn) / Math.sqrt(Math.max(1e-12, 1 - s*s));
 }
+/**
+ * Calculates the surface area of a tiny patch of retina at angle θ_n.
+ * The retina is curved like the inside of a sphere, so patches farther
+ * from the center cover more area. We use this to weight the score
+ * correctly — a larger patch of healthy retina contributes more.
+ *
+ * @param {number} tn_deg - Visual angle in nodal degrees
+ * @returns {number} Area of the retinal patch in steradians (solid angle units)
+ */
 function sphereArea(tn_deg) {
   const tc = thetaCenter(tn_deg) * Math.PI / 180;
   return Math.sin(tc) * dTc_dTn(tn_deg) * DTHETA * DPHI * (Math.PI/180)**2;
 }
+/**
+ * Calculates the great-circle distance between two points on the retina.
+ * Because the retina is a curved surface (like the Earth), the shortest
+ * path between two points curves — just like a flight path on a globe.
+ * This gives a more accurate distance than simple flat (Euclidean) math.
+ *
+ * @param {number} tn1 - Eccentricity of point 1 (nodal degrees)
+ * @param {number} p1  - Azimuth of point 1 (degrees, 0–360)
+ * @param {number} tn2 - Eccentricity of point 2 (nodal degrees)
+ * @param {number} p2  - Azimuth of point 2 (degrees, 0–360)
+ * @returns {number} Angular distance in degrees
+ */
 function gcDist(tn1, p1, tn2, p2) {
   const tc1 = thetaCenter(tn1)*Math.PI/180, tc2 = thetaCenter(tn2)*Math.PI/180;
   const dp = (p1-p2)*Math.PI/180;
@@ -98,6 +189,15 @@ function gcDist(tn1, p1, tn2, p2) {
     Math.cos(tc1)*Math.cos(tc2) + Math.sin(tc1)*Math.sin(tc2)*Math.cos(dp)
   ))) * 180/Math.PI;
 }
+/**
+ * The reverse of thetaCenter — converts a retinal center angle (θ_c)
+ * back to a nodal angle (θ_n). Because there is no simple formula to
+ * go backwards, this uses Newton's method: it makes an initial guess
+ * then refines it 8 times until the answer is very accurate.
+ *
+ * @param {number} tc_deg - Retinal angle in center degrees (θ_c)
+ * @returns {number} Visual angle in nodal degrees (θ_n)
+ */
 function thetaNodal(tc_deg) {
   let tn = tc_deg * (12/17);
   for (let i = 0; i < 8; i++) {
@@ -110,10 +210,28 @@ function thetaNodal(tc_deg) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MASK BUILDER
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Creates a simple pseudo-random number generator (PRNG) from a seed.
+ * Give it the same seed and it always produces the same sequence of
+ * numbers — useful for generating the demo patient's scotoma shape
+ * consistently every time the app loads.
+ *
+ * @param {number} seed - Starting value (same seed = same sequence)
+ * @returns {function} A function that returns a random number 0–1 each call
+ */
 function makeRng(seed) {
   let s = (seed ^ 0x9e3779b9) | 1;
   return () => { s ^= s<<13; s ^= s>>17; s ^= s<<5; return (s>>>0)/0x100000000; };
 }
+/**
+ * Creates a smooth 1D noise function — like a gentle wavy line.
+ * Used to add realistic irregular edges to the demo patient's scotoma
+ * shape, so it looks like a real lesion rather than a perfect circle.
+ *
+ * @param {function} rng     - A random number generator (from makeRng)
+ * @param {number}   nPoints - How many random control points to use
+ * @returns {function} A function that takes a value 0–1 and returns smooth noise
+ */
 function makeNoise1D(rng, nPoints) {
   const vals = Array.from({length:nPoints}, ()=>rng()*2-1);
   return (t) => {
@@ -123,6 +241,20 @@ function makeNoise1D(rng, nPoints) {
     return vals[i0]*(1-0.5*(1-Math.cos(f*Math.PI))) + vals[i1]*0.5*(1-Math.cos(f*Math.PI));
   };
 }
+/**
+ * Creates a blob-shaped damaged region on the retina for the demo patient.
+ * The shape is defined by a radius function (which varies by angle) plus
+ * some random noise to make the edge look organic rather than geometric.
+ * Returns a function you can call with (x, y) to check if a point is inside.
+ *
+ * @param {number}   ox       - Centre x position (degrees)
+ * @param {number}   oy       - Centre y position (degrees)
+ * @param {function} radiusFn - Function(angle) → radius at that angle
+ * @param {number}   amp      - How much noise to add to the edge (degrees)
+ * @param {function} rng      - Random number generator
+ * @param {number}   nNoise   - Number of noise control points
+ * @returns {function} A function(x, y) → true if inside the damaged region
+ */
 function makeSmoothRegion(ox, oy, radiusFn, amp, rng, nNoise) {
   const noise = makeNoise1D(rng, nNoise);
   return (x, y) => {
@@ -132,9 +264,20 @@ function makeSmoothRegion(ox, oy, radiusFn, amp, rng, nNoise) {
     return r <= radiusFn(ang) + amp*noise(ang/360);
   };
 }
-// Low-level mask builder — accepts a pre-filled Uint8Array (dmgMask) instead of
-// an array of region closures. This avoids the O(cells × regions) closure loop
-// that caused the main-thread freeze on "Generate Damage Map".
+/**
+ * Builds the retinal damage map from a pre-filled bitmap array.
+ * This is the fast version — instead of testing every grid cell against
+ * dozens of shape functions (which was very slow), the damage areas are
+ * already stamped into a flat array (dmgMask) before this function runs.
+ *
+ * The result is an object with lookup functions (damage, satellite, distort)
+ * that let other parts of the app quickly ask "is this retinal point damaged?"
+ *
+ * @param {Uint8Array} dmgMask          - Pre-filled grid: 1 = damaged, 0 = healthy
+ * @param {Array}      satellites       - List of small satellite lesion circles {cx,cy,r}
+ * @param {Array}      annularExclusions - Ring-shaped areas to carve OUT of damage
+ * @returns {{damage, satellite, distort, markDistort, mask, satMask, distortMask}}
+ */
 function buildMaskFromArrays(dmgMask, satellites=[], annularExclusions=[]) {
   const mask    = new Uint8Array(dmgMask); // copy
   const satMask = new Uint8Array(MASK_N*MASK_N);
@@ -182,8 +325,18 @@ function buildMaskFromArrays(dmgMask, satellites=[], annularExclusions=[]) {
   };
 }
 
-// Legacy closure-based builder — kept only for PATIENT_C demo which uses makeSmoothRegion fns.
-// Not called from the hot path (Amsler → mask).
+/**
+ * Builds a retinal damage map from a list of shape functions (closures).
+ * Each function in `regions` takes (x, y) and returns true if that point
+ * is damaged. This is only used for the built-in demo patient (PATIENT_C)
+ * because it's slower — it tests every grid cell against every shape.
+ * Patient drawings from the Amsler grid use buildMaskFromArrays instead.
+ *
+ * @param {function[]} regions          - Array of (x,y)→boolean damage shape functions
+ * @param {Array}      satellites       - Small satellite lesion circles
+ * @param {Array}      annularExclusions - Ring areas to exclude from damage
+ * @returns {object} Same structure as buildMaskFromArrays
+ */
 function buildMask(regions, satellites=[], annularExclusions=[]) {
   const dmgMask = new Uint8Array(MASK_N*MASK_N);
   const idx = (gi,gj) => gj*MASK_N+gi;
@@ -205,6 +358,21 @@ const AMSLER_SUBSAMPLE = 5;
 const AMSLER_CELL_MM   = 5;    // physical cell size: 5 mm
 const AMSLER_DIST_MM   = 300;  // standard viewing distance: 300 mm (30 cm)
 
+/**
+ * Converts the patient's Amsler grid drawings into a retinal damage map.
+ * The patient marks cells on a 30×30 grid (each cell = 1° of visual field).
+ * This function translates those grid coordinates into real retinal positions
+ * (in θ_c degrees) and stamps each marked area into a bitmap.
+ *
+ * It's fast because it uses "disc stamping" — for each sub-sampled point,
+ * it fills a small circle in the bitmap rather than storing a closure function.
+ * This avoids the 58-million-operation freeze that the old approach caused.
+ *
+ * @param {Set<string>} scotomaCells    - Whole painted cells "col,row"
+ * @param {Set<string>} subScotomaCells - Half-size boundary trace cells
+ * @param {Set<string>} distortCells    - Cells marked as wavy/distorted
+ * @returns {object} Patient mask with damage/satellite/distort lookup functions
+ */
 function buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells) {
   // Direct bitmap rasterization — no closure array, no O(cells×regions) loop.
   // For each Amsler sub-sample point we compute its θ_c position + influence radius,
@@ -321,6 +489,18 @@ const PATIENT_C = (()=>{
 // Pre-computed per-theta row cache — reused across all computeScore calls with same sigma
 // Keyed by "sigma:tn_center" — rebuilt only when those change.
 let _scoreCache = null;
+/**
+ * Returns a cached set of pre-computed trigonometry values for a given
+ * (sigma, tn_center) combination. Computing cos/sin for every retinal cell
+ * on every score call is slow — this cache reuses those values as long as
+ * sigma and the candidate location haven't changed.
+ *
+ * Think of it like a lookup table: calculate once, reuse many times.
+ *
+ * @param {number} sigma     - Task radius parameter (degrees)
+ * @param {number} tn_center - Eccentricity of the candidate PRL (nodal degrees)
+ * @returns {object} Cache object with pre-computed rows, trig values, and cutoff
+ */
 function getScoreCache(sigma, tn_center) {
   const key = sigma + ':' + tn_center.toFixed(4);
   if (_scoreCache && _scoreCache.key === key) return _scoreCache;
@@ -356,6 +536,31 @@ function getScoreCache(sigma, tn_center) {
 const _TI_MAX = 65, _PI_MAX = 120;
 const _healthyBuf = new Uint8Array(_TI_MAX * _PI_MAX);
 
+/**
+ * Scores a single candidate PRL location (alpha_c, gammaDeg) on the retina.
+ * Higher score = better location for the patient to aim their vision.
+ *
+ * The score formula is:  S = ∫∫ H · Q^β · G · dA  −  μ · F
+ *
+ *   H = Health factor (1 = healthy, 0 = damaged, partial for distorted)
+ *   Q = Acuity quality — higher near the fovea (cones are denser there)
+ *   G = Gaussian weight — cells closer to the target PRL count more
+ *   dA = Retinal patch area (larger patches count more)
+ *   F = Fragmentation penalty — penalises landing zones near lesion edges
+ *   β = How much to emphasise acuity vs. area (slider in the UI)
+ *   μ = How much to penalise fragmented edges (slider in the UI)
+ *
+ * Returns null if the candidate location is inside damaged tissue or the optic disc.
+ *
+ * @param {object} patient   - Retinal mask from buildMaskFromAmsler
+ * @param {number} alpha_c   - Candidate eccentricity in θ_c degrees
+ * @param {number} gammaDeg  - Candidate azimuth in degrees (0 = nasal, 90 = superior)
+ * @param {number} sigma     - Task radius — how wide the useful area needs to be
+ * @param {number} beta      - Acuity emphasis (0.05 = area only, 1 = full acuity)
+ * @param {string} eye       - "right" or "left"
+ * @param {number} hDistort  - Health weight for distorted (wavy) cells (default 0.3)
+ * @returns {{mainScore, F, cellCount} | null}
+ */
 function computeScore(patient, alpha_c, gammaDeg, sigma, beta, eye, hDistort=0.3) {
   const _xs = (eye === "left") ? -1 : 1;
   if (alpha_c < 0.5) return null;
@@ -433,6 +638,23 @@ function computeScore(patient, alpha_c, gammaDeg, sigma, beta, eye, hDistort=0.3
   return {mainScore, F, cellCount};
 }
 
+/**
+ * Searches the entire retina for the best PRL location by testing a grid
+ * of candidate positions (eccentricity 0.5°–35°, azimuth every 5°).
+ * All candidates are scored with computeScore, then the one with the
+ * highest combined score (after applying the fragmentation penalty μ) wins.
+ *
+ * Note: This is the synchronous version, used internally.
+ * The UI uses findOptimalChunked instead so the page doesn't freeze.
+ *
+ * @param {object} patient  - Retinal mask
+ * @param {number} sigma    - Task radius
+ * @param {number} beta     - Acuity emphasis
+ * @param {number} mu       - Fragmentation penalty weight
+ * @param {string} eye      - "right" or "left"
+ * @param {number} hDistort - Health weight for distorted cells
+ * @returns {{alpha_c, alpha, gamma, score}} Best location found
+ */
 function findOptimal(patient, sigma, beta, mu, eye, hDistort=0.3) {
   let best=-Infinity, ba_c=thetaCenter(1), bg=0;
   const ac_min=thetaCenter(0.5), ac_max=thetaCenter(35);
@@ -492,10 +714,24 @@ let appState = {
   mapZoneVis:{weighted:true, Conly:false, Aonly:false},
 };
 
+/**
+ * Updates the top-level app state and re-renders the whole UI.
+ * Use this for screen changes (e.g. home → diagnostic) or patient data updates.
+ * For smaller updates (just the diagnostic tool state, or just the Rx),
+ * use setDiag / setRx / setRxLeft instead.
+ *
+ * @param {object} patch - Key-value pairs to merge into appState
+ */
 function setState(patch) {
   Object.assign(appState, patch);
   render();
 }
+/**
+ * Updates the diagnostic sub-state (tool selection, drawn cells, eye choice)
+ * and re-renders the UI. Only touches appState.diag.
+ *
+ * @param {object} patch - Key-value pairs to merge into appState.diag
+ */
 function setDiag(patch) {
   Object.assign(appState.diag, patch);
   render();
@@ -519,6 +755,29 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // RETINAL MAP CANVAS — draws into a <canvas> element
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Draws the retinal damage map onto a circular canvas element.
+ * Each pixel is coloured based on what's at that retinal location:
+ *   Green  = healthy retina (brighter near fovea)
+ *   Red    = damaged (scotoma / GA lesion)
+ *   Orange = satellite lesion
+ *   Yellow = distorted (metamorphopsia) zone
+ *   Tan    = optic disc (blind spot)
+ *
+ * If optima are provided (after running the optimizer), it also draws
+ * coloured circles showing the three PRL candidates (orange, blue, gray).
+ * The user can toggle each zone on/off using appState.mapZoneVis.
+ *
+ * @param {HTMLCanvasElement} canvas         - The canvas to draw on
+ * @param {object}            patient        - Retinal mask from buildMaskFromAmsler
+ * @param {number}            alpha          - Current PRL eccentricity (nodal degrees)
+ * @param {number}            gamma          - Current PRL azimuth (degrees)
+ * @param {number}            sigma          - Task radius for drawing the rings
+ * @param {number}            committedSigma - Sigma value locked in when optimizer ran
+ * @param {object|null}       optima         - {weighted, Aonly, Conly} PRL candidates
+ * @param {number}            size           - Canvas width/height in pixels
+ * @param {string}            eye            - "right" or "left" (mirrors x-axis for left)
+ */
 function drawRetinalMap(canvas, patient, alpha, gamma, sigma, committedSigma, optima, size, eye) {
   eye = eye || "right";
   const ctx = canvas.getContext("2d");
@@ -656,6 +915,20 @@ const SUB = 2;
 const SUB_CELL_PX = CELL_PX / SUB;   // 9
 const SUB_N = GRID_N * SUB;           // 60
 
+/**
+ * Draws the Amsler grid onto the diagnostic canvas.
+ * The grid is 30×30 cells on a black background, with:
+ *   Red cells     = scotoma (areas the patient can't see)
+ *   Orange cells  = distortion (wavy lines)
+ *   White lines   = grid lines
+ *   Blue circles  = 5°, 10°, 15° eccentricity rings for reference
+ *   White/red dot = fixation target at the center
+ *
+ * @param {HTMLCanvasElement} canvas         - Canvas to draw on
+ * @param {Set<string>}       scotomaCells    - Painted scotoma cells "col,row"
+ * @param {Set<string>}       subScotomaCells - Half-size boundary trace cells
+ * @param {Set<string>}       distortCells    - Distortion cells
+ */
 function drawAmslerGrid(canvas, scotomaCells, subScotomaCells, distortCells) {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0,0,CANVAS_PX,CANVAS_PX);
@@ -707,6 +980,17 @@ function drawAmslerGrid(canvas, scotomaCells, subScotomaCells, distortCells) {
   ctx.strokeStyle="#ef4444"; ctx.lineWidth=2.5; ctx.stroke();
 }
 
+/**
+ * Draws the live cursor trail on the transparent overlay canvas
+ * while the patient is actively dragging in boundary trace mode.
+ * This runs on every mouse-move event and shows the curve being drawn
+ * before it is committed to the scotoma map on mouse release.
+ *
+ * @param {HTMLCanvasElement} canvas     - Overlay canvas (sits on top of main canvas)
+ * @param {Array}             livePoints - Array of {x,y} points collected so far
+ * @param {boolean}           isDrawing  - Whether the user is currently dragging
+ * @param {string}            tool       - Current tool (only draws for "boundary" tool)
+ */
 function drawOverlay(canvas, livePoints, isDrawing, tool) {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0,0,CANVAS_PX,CANVAS_PX);
@@ -731,6 +1015,20 @@ function drawOverlay(canvas, livePoints, isDrawing, tool) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOOD FILL helpers
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Fills the interior of a closed boundary curve with scotoma cells.
+ * When the patient draws a curve around a damaged area, this function
+ * starts from the centre of the enclosed region and spreads outward
+ * (like paint bucket fill in a drawing app) until it hits the boundary
+ * strokes or reaches the edge of the grid.
+ *
+ * @param {Set<string>} wallSet  - Boundary cells that act as walls
+ * @param {number}      startC   - Starting column (usually centre of curve)
+ * @param {number}      startR   - Starting row
+ * @param {number}      maxCells - Safety limit to stop infinite spread
+ * @param {number}      gridN    - Grid size (e.g. 60 for sub-cell grid)
+ * @returns {Set<string>|null} Filled interior cells, or null if fill failed
+ */
 function floodFill(wallSet, startC, startR, maxCells, gridN) {
   const filled=new Set();
   const key=(c,r)=>`${c},${r}`;
@@ -751,6 +1049,17 @@ function floodFill(wallSet, startC, startR, maxCells, gridN) {
   return filled;
 }
 
+/**
+ * Converts a smooth hand-drawn curve (list of pixel coordinates) into
+ * a set of grid cells on the sub-cell grid, then flood-fills the interior.
+ * This is called when the patient releases the mouse after boundary tracing —
+ * it turns their freehand stroke into precise grid markings.
+ *
+ * @param {Array}  pts       - Array of {x,y} pixel points along the drawn curve
+ * @param {number} subN      - Number of sub-cells per side (GRID_N × SUB)
+ * @param {number} subCellPx - Size of each sub-cell in pixels
+ * @returns {Set<string>|null} Sub-cell keys for the filled region, or null if invalid
+ */
 function rasterizeCurveToGrid(pts, subN, subCellPx) {
   if (pts.length<3) return null;
   const wallSet=new Set();
@@ -796,6 +1105,23 @@ function getCellFromXY(x,y) {
 // RENDER ENGINE — pure DOM manipulation, no framework
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * A tiny helper function that creates an HTML element — similar to
+ * how React's createElement works, but much simpler.
+ *
+ * Instead of writing:
+ *   const div = document.createElement("div");
+ *   div.style.color = "red";
+ *   div.textContent = "Hello";
+ *
+ * You can write:
+ *   h("div", {style:{color:"red"}}, "Hello")
+ *
+ * @param {string} tag        - HTML tag name ("div", "button", "canvas", etc.)
+ * @param {object|null} attrs - Attributes: style object, event handlers (onclick etc.), class
+ * @param {...any} children   - Child elements or text strings to put inside
+ * @returns {HTMLElement} The created element with all attributes and children attached
+ */
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   if (attrs) {
@@ -876,6 +1202,18 @@ function sliderEl({label,min,max,step,val,color,note,fmt,onChange,onLiveInput}) 
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Import scotoma map from JSON ────────────────────────────────────────────
+/**
+ * Loads a previously saved scotoma map from a JSON file.
+ * The file is read by the browser's FileReader, parsed, and converted
+ * back into a patient mask — allowing the doctor to reload a patient's
+ * data without re-doing the Amsler test.
+ *
+ * Shows a loading overlay while the mask is being rebuilt (which takes
+ * a fraction of a second) so the UI doesn't appear frozen.
+ *
+ * @param {File}   file     - The JSON file selected by the user
+ * @param {string} forceEye - Override the eye field: "right" or "left"
+ */
 function loadDamageMap(file, forceEye) {
   const reader = new FileReader();
   reader.onload = e => {
@@ -926,6 +1264,15 @@ function loadDamageMap(file, forceEye) {
   reader.readAsText(file);
 }
 
+/**
+ * Renders the home screen — the first page the user sees.
+ * Provides three entry points:
+ *   1. "Start with Patient Scan" — goes to the Amsler diagnostic grid
+ *   2. "Demo Patient"            — loads a built-in example patient (Patient C)
+ *   3. Import buttons            — load a previously saved scotoma JSON file
+ *
+ * @returns {HTMLElement} The home screen div
+ */
 function renderHome() {
   const wrap=h("div",{style:{maxWidth:"680px",margin:"60px auto",padding:"0 24px",textAlign:"center"}},
     h("div",{style:{fontSize:"52px",fontWeight:"900",color:"#6b0070",letterSpacing:"-2px",marginBottom:"8px",fontFamily:"monospace",lineHeight:"1"}},
@@ -987,6 +1334,17 @@ function renderHome() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC — INSTRUCTIONS SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Renders the instructions screen for Step 1 (Diagnostic).
+ * Shown before the patient starts drawing on the Amsler grid.
+ * Includes:
+ *   - Eye selector (right / left)
+ *   - Preparation checklist (cover other eye, distance, etc.)
+ *   - Explanation of the three drawing modes
+ *   - "BEGIN TEST" button to proceed to the grid
+ *
+ * @returns {HTMLElement} The instructions screen div
+ */
 function renderDiagInstructions() {
   const d=appState.diag;
   // Tightened spacing so all content + BEGIN button fits iPad Air landscape (~718px usable)
@@ -1066,6 +1424,22 @@ let _diagCanvasRef=null, _diagOverlayRef=null;
 let _drawingActive=false, _livePointsRef=[];
 let _pendingCanvasWire=null;
 
+/**
+ * Renders the Amsler grid drawing screen for Step 1 (Diagnostic).
+ * The patient draws their scotoma and distortion areas on the grid.
+ * Layout: left panel (tool controls) + right panel (the grid canvas).
+ *
+ * Left panel contains:
+ *   - Tool selector: Boundary Trace, Paint Scotoma, Paint Distortion, Erase
+ *   - Active mode hint (shows what the current tool does)
+ *   - Marked regions counter (scotoma + distortion cell counts)
+ *   - CLEAR ALL, BACK, and GENERATE DAMAGE MAP buttons
+ *
+ * The canvas updates in real-time as the patient draws without
+ * rebuilding the DOM (direct canvas draw, not render()).
+ *
+ * @returns {HTMLElement} The drawing screen div
+ */
 function renderDiagDraw() {
   const d=appState.diag;
   const tools=[
@@ -1306,6 +1680,26 @@ let _rxMapCanvasRefEVL=null; // EV left map
 let _rxDebounce=null;
 
 // ─── Chunked optimizer (CSP-safe, non-blocking) ──────────────────────────────
+/**
+ * Searches for the best PRL location without freezing the browser.
+ * It does the same search as findOptimal, but breaks the work into
+ * small chunks (CHUNK alpha steps at a time) and uses setTimeout to
+ * yield control back to the browser between chunks — so the progress
+ * bar can update and the UI stays responsive.
+ *
+ * After all chunks finish, calls onDone(result) with the best location.
+ * Calls onProgress(stepsDone, totalSteps) after each chunk so the
+ * progress bar can update.
+ *
+ * @param {object}   patient    - Retinal mask
+ * @param {number}   sigma      - Task radius
+ * @param {number}   beta       - Acuity emphasis
+ * @param {number}   mu         - Fragmentation penalty
+ * @param {string}   eye        - "right" or "left"
+ * @param {number}   hDistort   - Distortion health weight
+ * @param {function} onDone     - Called with the best result when finished
+ * @param {function} onProgress - Called with (stepsDone) after each chunk
+ */
 function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone, onProgress, totalSteps) {
   const ac_min=thetaCenter(0.5), ac_max=thetaCenter(35);
   const acSteps=[];
@@ -1340,6 +1734,18 @@ function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone,
   setTimeout(runChunk,0);
 }
 
+/**
+ * Runs the PRL optimizer for one eye and stores the results in appState.
+ * It runs three searches in parallel (one for each beta setting):
+ *   - "weighted" : uses the doctor's chosen β value  (shown in orange)
+ *   - "Conly"    : uses β=1 (full acuity emphasis)   (shown in blue)
+ *   - "Aonly"    : uses β=0.05 (area-only emphasis)  (shown in gray)
+ *
+ * Each search is chunked (non-blocking) and reports progress. When all
+ * three finish, the prescription panel updates with the results.
+ *
+ * @param {string} [eye] - "right" or "left" (defaults to the last scanned eye)
+ */
 function rxAutoRun(eye) {
   const _eye = eye || (appState.patientData ? appState.patientData.eye : "right");
   const isLeft = _eye === "left";
@@ -1451,7 +1857,27 @@ function scheduleRxRun() {
 }
 
 // ── Reusable map block factory ───────────────────────────────────────────────
-// Returns {canvas, clip, zoomBar, block, wireEvents()}
+/**
+ * Creates a zoomable retinal map panel: a circular canvas with zoom buttons
+ * (−, +, reset) and pan-by-drag support. Used for all retinal map displays
+ * in the prescription screen (right eye MS, left eye MS, EV maps).
+ *
+ * Returns an object with:
+ *   canvas     - The <canvas> element to draw on
+ *   block      - The full panel div (label + zoom bar + canvas clip)
+ *   wireEvents - Call this after inserting block into the DOM to enable
+ *                mouse wheel zoom and drag-to-pan
+ *
+ * Zoom state is stored in appState[mzKey] so it survives re-renders.
+ * The zoom buttons patch the canvas transform directly (no full render)
+ * so zooming in/out never resets the page scroll position.
+ *
+ * @param {number} size        - Canvas width and height in pixels
+ * @param {string} mzKey       - Key in appState for storing zoom state (e.g. "mapZoom")
+ * @param {string} label       - Label shown above the map
+ * @param {string} borderColor - Accent colour for label and zoom buttons
+ * @returns {{canvas, clip, zoomBar, block, wireEvents}}
+ */
 // wireEvents() must be called in a requestAnimationFrame after DOM insertion
 function makeMapBlock(size, mzKey, label, borderColor) {
   if (!appState[mzKey]) appState[mzKey]={scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0};
@@ -1526,6 +1952,14 @@ function makeMapBlock(size, mzKey, label, borderColor) {
 
 
 // ── Export scotoma map as JSON ──────────────────────────────────────────────
+/**
+ * Exports the patient's scotoma map as a JSON file that the user can
+ * download and reload later. The file contains the drawn grid cells
+ * and metadata (eye, date, totals). When loaded back, the full patient
+ * mask can be reconstructed without needing to redo the Amsler test.
+ *
+ * @param {object} pd - Patient data object from diagFinish or loadDamageMap
+ */
 function saveDamageMap(pd) {
   if (!pd) return;
   const payload = {
@@ -1547,6 +1981,26 @@ function saveDamageMap(pd) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+/**
+ * Renders the prescription screen for Step 2.
+ * This is the most complex screen — it shows:
+ *   - Score parameter sliders (σ, β, μ, ρ)
+ *   - Generate Prescription button with progress bar
+ *   - Score Formula (the mathematical equation being optimised)
+ *   - PRL prescription output (eccentricity + azimuth)
+ *   - Eccentric Viewing and MS prescription cards
+ *   - Retinal map canvas with PRL zone overlays
+ *   - Landing Zones legend with toggle checkboxes
+ *   - Retinal Tissue legend
+ *   - Optimization Details (collapsible)
+ *   - Diagnostic Input summary
+ *
+ * In binocular mode (both eyes scanned) it also renders:
+ *   - Left eye independent MS prescription section
+ *   - Joint Eccentric Viewing (EV) optimizer section
+ *
+ * @returns {HTMLElement} The prescription screen div
+ */
 function renderPrescription() {
   const rx=appState.rx;
   const rxLeft=appState.rxLeft;
@@ -1939,56 +2393,41 @@ function renderPrescription() {
     )
   ):null;
 
-  const formulaCard=(()=>{
-    const div=h("div",{style:{...card(),lineHeight:"1.9",color:"#374151"}});
-    div.appendChild(secLabel("Score Formula"));
-
-    const row=(labelTex, rhsTex)=>{
-      const d=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px",flexWrap:"wrap"}});
-      d.appendChild(tex(labelTex));
-      d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"13px"}}," = "));
-      d.appendChild(tex(rhsTex));
-      return d;
-    };
-
-    // Main score
-    div.appendChild(row(
-      "\\mathcal{S}",
-      "\\displaystyle\\iint_{\\Omega} H \\cdot Q(\\theta_c)^{\\beta} \\cdot G \\cdot dA \\;-\\; \\mu\\, F"
-    ));
-
-    // Q first, then G
-    div.appendChild(row(
-      "Q(\\theta_c)",
-      "\\dfrac{2}{2 + \\theta_c}"
-    ));
-
-    // G with proper e^{} notation
-    div.appendChild(row(
-      "G",
-      "e^{-d^2/2\\sigma^2}"
-    ));
-
-    // dA
-    div.appendChild(row(
-      "dA",
-      "\\sin(\\theta_c)\\,\\dfrac{d\\theta_c}{d\\theta_n}\\,d\\theta_n\\,d\\varphi"
-    ));
-
-    // F
-    div.appendChild(row(
-      "F",
-      "\\displaystyle\\iint_{\\Omega} H \\cdot G \\cdot B\\,dA \\quad (B = \\tfrac{\\text{unhealthy neighbours}}{8})"
-    ));
-
-    // final score
-    const finalRow=h("div",{style:{marginTop:"6px",paddingTop:"6px",borderTop:"1px solid #e8d0ec",display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}});
-    finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"final: "));
-    finalRow.appendChild(tex("\\tilde{\\mathcal{S}} = \\mathcal{S}/\\mathcal{S}_{\\max} - \\mu\\,(F/F_{\\max})"));
-    div.appendChild(finalRow);
-
-    return div;
-  })();
+  const formulaOpen = appState.rxFormulaOpen??false;
+  const formulaToggle=()=>{appState.rxFormulaOpen=!formulaOpen; render();};
+  const formulaCard=h("div",{style:{...card(),padding:"0",overflow:"hidden"}},
+    h("button",{
+      style:{width:"100%",background:"none",border:"none",padding:"10px 14px",
+        display:"flex",alignItems:"center",justifyContent:"space-between",
+        cursor:"pointer",fontFamily:"monospace"},
+      onclick:formulaToggle},
+      h("span",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#9370a0",textTransform:"uppercase"}},
+        "Score Formula"),
+      h("span",{style:{fontSize:"12px",color:"#94a3b8"}}, formulaOpen?"▲":"▼")
+    ),
+    formulaOpen?h("div",{style:{padding:"0 14px 14px",borderTop:"1px solid #f1f5f9",lineHeight:"1.9",color:"#374151"}},
+      (()=>{
+        const row=(labelTex, rhsTex)=>{
+          const d=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px",flexWrap:"wrap"}});
+          d.appendChild(tex(labelTex));
+          d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"13px"}}," = "));
+          d.appendChild(tex(rhsTex));
+          return d;
+        };
+        const wrap=h("div",{style:{marginTop:"12px"}});
+        wrap.appendChild(row("\\mathcal{S}","\\displaystyle\\iint_{\\Omega} H \\cdot Q(\\theta_c)^{\\beta} \\cdot G \\cdot dA \\;-\\; \\mu\\, F"));
+        wrap.appendChild(row("Q(\\theta_c)","\\dfrac{2}{2 + \\theta_c}"));
+        wrap.appendChild(row("G","e^{-d^2/2\\sigma^2}"));
+        wrap.appendChild(row("dA","\\sin(\\theta_c)\\,\\dfrac{d\\theta_c}{d\\theta_n}\\,d\\theta_n\\,d\\varphi"));
+        wrap.appendChild(row("F","\\displaystyle\\iint_{\\Omega} H \\cdot G \\cdot B\\,dA \\quad (B = n_u/8)"));
+        const finalRow=h("div",{style:{marginTop:"6px",paddingTop:"6px",borderTop:"1px solid #e8d0ec",display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}});
+        finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"final: "));
+        finalRow.appendChild(tex("\\tilde{\\mathcal{S}} = \\mathcal{S}/\\mathcal{S}_{\\max} - \\mu\\,(F/F_{\\max})"));
+        wrap.appendChild(finalRow);
+        return wrap;
+      })()
+    ):null
+  );
 
   const leftCtrl=h("div",{style:colStyle},
     scoreParamsCard, runBtn, runStatus, formulaCard
@@ -2349,6 +2788,14 @@ function renderApp() {
   }
 }
 
+/**
+ * The main render function — called whenever app state changes.
+ * It calls renderApp() to rebuild the HTML, then redraws all canvases
+ * using requestAnimationFrame (so the browser can paint the HTML first).
+ *
+ * Note: Some interactions (zoom buttons, landing zone checkboxes) bypass
+ * render() entirely and patch the DOM directly to avoid resetting scroll.
+ */
 function render() {
   renderApp();
   // Re-draw canvases after render
