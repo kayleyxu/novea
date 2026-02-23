@@ -2118,7 +2118,7 @@ function renderPrescription() {
     h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",
       marginBottom:"14px",paddingBottom:"8px",borderBottom:"1px solid #e8d0ec"}},
       h("span",{style:{fontSize:"11px",fontWeight:"700",letterSpacing:"2px",textTransform:"uppercase",
-        fontFamily:"monospace",color:rxGray?"#9370a0":"#6b0070"}},"📋 Prescription — PRL"),
+        fontFamily:"monospace",color:rxGray?"#9370a0":"#6b0070"}},"Prescription — PRL"),
       rxDone
         ? h("span",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",fontFamily:"monospace"}},"✓ Set")
         : h("span",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace"}},"generate to unlock →")
@@ -2132,11 +2132,11 @@ function renderPrescription() {
         h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},
           "θ_n=",alpha.toFixed(1),"°  ·  θ_c=",rx.alpha_c.toFixed(1),"°"),
         h("div",{style:{marginTop:"10px"}},
-          (()=>{const inp=h("input",{type:"range",min:"0",max:"35",step:"1",
-            value:String(Math.round(alpha)),class:"alpha-slider",
-            style:{width:"100%"}});
-            inp.addEventListener("input",e=>{setRx({alpha_c:thetaCenter(+e.target.value),status:"stale"});});
-            return inp;})()
+          h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8",position:"relative"}},
+            h("div",{style:{
+              width:Math.round(alpha/35*100)+"%",
+              height:"100%",borderRadius:"3px",
+              background:"#cc3300",pointerEvents:"none"}}))
         )
       ),
       // Azimuth
@@ -2147,11 +2147,11 @@ function renderPrescription() {
         h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},
           azimuthLabel(rx.gamma)),
         h("div",{style:{marginTop:"10px"}},
-          (()=>{const inp=h("input",{type:"range",min:"0",max:"355",step:"5",
-            value:String(rx.gamma),class:"gamma-slider",
-            style:{width:"100%"}});
-            inp.addEventListener("input",e=>{setRx({gamma:+e.target.value,status:"stale"});});
-            return inp;})()
+          h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8",position:"relative"}},
+            h("div",{style:{
+              width:Math.round(rx.gamma/355*100)+"%",
+              height:"100%",borderRadius:"3px",
+              background:"#5b9bd5",pointerEvents:"none"}}))
         )
       )
     ),
@@ -2405,24 +2405,25 @@ function renderPrescription() {
         "Score Formula"),
       h("span",{style:{fontSize:"12px",color:"#94a3b8"}}, formulaOpen?"▲":"▼")
     ),
-    formulaOpen?h("div",{style:{padding:"0 14px 14px",borderTop:"1px solid #f1f5f9",lineHeight:"1.9",color:"#374151"}},
+    formulaOpen?h("div",{style:{padding:"0 10px 12px",borderTop:"1px solid #f1f5f9",lineHeight:"1.6",color:"#374151",fontSize:"11px"}},
       (()=>{
         const row=(labelTex, rhsTex)=>{
-          const d=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px",flexWrap:"wrap"}});
+          const d=h("div",{style:{display:"flex",alignItems:"center",gap:"4px",marginBottom:"3px",overflow:"hidden"}});
           d.appendChild(tex(labelTex));
-          d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"13px"}}," = "));
+          d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"11px"}}," = "));
           d.appendChild(tex(rhsTex));
           return d;
         };
         const wrap=h("div",{style:{marginTop:"12px"}});
-        wrap.appendChild(row("\\mathcal{S}","\\displaystyle\\iint_{\\Omega} H \\cdot Q(\\theta_c)^{\\beta} \\cdot G \\cdot dA \\;-\\; \\mu\\, F"));
+        wrap.appendChild(row("\\mathcal{S}","\\textstyle\\iint H \\cdot Q^{\\beta} \\cdot G \\cdot dA - \\mu F"));
         wrap.appendChild(row("Q(\\theta_c)","\\dfrac{2}{2 + \\theta_c}"));
         wrap.appendChild(row("G","e^{-d^2/2\\sigma^2}"));
         wrap.appendChild(row("dA","\\sin(\\theta_c)\\,\\dfrac{d\\theta_c}{d\\theta_n}\\,d\\theta_n\\,d\\varphi"));
-        wrap.appendChild(row("F","\\displaystyle\\iint_{\\Omega} H \\cdot G \\cdot B\\,dA \\quad (B = n_u/8)"));
+        wrap.appendChild(row("F","\\textstyle\\iint H \\cdot G \\cdot B\\,dA"));
+        wrap.appendChild(row("B","n_u/8"));
         const finalRow=h("div",{style:{marginTop:"6px",paddingTop:"6px",borderTop:"1px solid #e8d0ec",display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}});
-        finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"final: "));
-        finalRow.appendChild(tex("\\tilde{\\mathcal{S}} = \\mathcal{S}/\\mathcal{S}_{\\max} - \\mu\\,(F/F_{\\max})"));
+        finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"Final: "));
+        finalRow.appendChild(tex("\\tilde{S} = S/S_{\\max} - \\mu(F/F_{\\max})"));
         wrap.appendChild(finalRow);
         return wrap;
       })()
@@ -2480,7 +2481,7 @@ function renderPrescription() {
   ):null;
 
   const rightCtrl=h("div",{style:colStyle},
-    manualCard, detailsCard, diagInputCard
+    manualCard, detailsCard
   );
 
   const sideBar=h("div",{class:"rx-sidebar",style:{display:"flex",gap:"12px",alignItems:"flex-start",flex:"0 0 auto",minWidth:"340px",maxWidth:"500px"}},
@@ -2542,7 +2543,7 @@ function renderPrescription() {
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",
           borderBottom:`1px solid ${rxLGray?"#e8d0ec":"#d8a8dc"}`,paddingBottom:"6px",marginBottom:"10px"}},
           h("span",{style:{fontSize:"11px",fontWeight:"700",fontFamily:"monospace",letterSpacing:"2px",
-            color:rxLGray?"#9370a0":"#6b0070"}},"📋 Prescription — PRL"),
+            color:rxLGray?"#9370a0":"#6b0070"}},"Prescription — PRL"),
           rxLDone
             ?h("span",{style:{fontSize:"11px",color:"#6b0070",fontWeight:"700",fontFamily:"monospace"}},"✓ Set")
             :h("span",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace"}},"generate to unlock →")),
@@ -2551,19 +2552,17 @@ function renderPrescription() {
             h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"ECCENTRICITY"),
             h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},alphaL.toFixed(1)+"°"),
             h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},"θ_n="+alphaL.toFixed(1)+"°  ·  θ_c="+rxL.alpha_c.toFixed(1)+"°"),
-            h("div",{style:{marginTop:"10px"}},(()=>{const inp=h("input",{type:"range",min:"0",max:"35",step:"1",
-              value:String(Math.round(alphaL)),class:"alpha-slider",style:{width:"100%"}});
-              inp.addEventListener("input",e=>{setRxLeft({alpha_c:thetaCenter(+e.target.value),status:"stale"});});
-              return inp;})())
+            h("div",{style:{marginTop:"10px"}},
+              h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8"}},
+                h("div",{style:{width:Math.round(alphaL/35*100)+"%",height:"100%",borderRadius:"3px",background:"#cc3300"}})))
           ),
           h("div",{style:{background:"#f4f0f8",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"12px 14px"}},
             h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
             h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},rxL.gamma+"°"),
             h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},azimuthLabel(rxL.gamma)),
-            h("div",{style:{marginTop:"10px"}},(()=>{const inp=h("input",{type:"range",min:"0",max:"355",step:"5",
-              value:String(rxL.gamma),class:"gamma-slider",style:{width:"100%"}});
-              inp.addEventListener("input",e=>{setRxLeft({gamma:+e.target.value,status:"stale"});});
-              return inp;})())
+            h("div",{style:{marginTop:"10px"}},
+              h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8"}},
+                h("div",{style:{width:Math.round(rxL.gamma/355*100)+"%",height:"100%",borderRadius:"3px",background:"#5b9bd5"}})))
           )
         ),
         rxLDone?h("div",{style:{fontSize:"11px",color:"#5a3060",fontFamily:"monospace",background:"#e8e0f4",padding:"7px 10px",borderRadius:"5px"}},
