@@ -2393,41 +2393,51 @@ function renderPrescription() {
     )
   ):null;
 
+  // Build formula content once; toggle display in-place — no render(), no scroll reset
+  const _formulaContent=(()=>{
+    const row=(labelTex, rhsTex)=>{
+      const d=h("div",{style:{display:"flex",alignItems:"center",gap:"4px",marginBottom:"3px",overflow:"hidden"}});
+      d.appendChild(tex(labelTex));
+      d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"11px"}}," = "));
+      d.appendChild(tex(rhsTex));
+      return d;
+    };
+    const wrap=h("div",{style:{marginTop:"12px"}});
+    wrap.appendChild(row("\\mathcal{S}","\\textstyle\\iint H \\cdot Q^{\\beta} \\cdot G \\cdot dA - \\mu F"));
+    wrap.appendChild(row("Q(\\theta_c)","\\dfrac{2}{2 + \\theta_c}"));
+    wrap.appendChild(row("G","e^{-d^2/2\\sigma^2}"));
+    wrap.appendChild(row("dA","\\sin(\\theta_c)\\,\\dfrac{d\\theta_c}{d\\theta_n}\\,d\\theta_n\\,d\\varphi"));
+    wrap.appendChild(row("F","\\textstyle\\iint H \\cdot G \\cdot B\\,dA"));
+    wrap.appendChild(row("B","n_u/8"));
+    const finalRow=h("div",{style:{marginTop:"6px",paddingTop:"6px",borderTop:"1px solid #e8d0ec",display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}});
+    finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"Final: "));
+    finalRow.appendChild(tex("\\tilde{S} = S/S_{\\max} - \\mu(F/F_{\\max})"));
+    wrap.appendChild(finalRow);
+    return wrap;
+  })();
   const formulaOpen = appState.rxFormulaOpen??false;
-  const formulaToggle=()=>{appState.rxFormulaOpen=!formulaOpen; render();};
+  const formulaContentDiv=h("div",{style:{
+    display:formulaOpen?"block":"none",
+    padding:"0 10px 12px",borderTop:"1px solid #f1f5f9",
+    lineHeight:"1.6",color:"#374151",fontSize:"11px"}},
+    _formulaContent);
+  const formulaChevron=h("span",{style:{fontSize:"12px",color:"#94a3b8"}},formulaOpen?"▲":"▼");
   const formulaCard=h("div",{style:{...card(),padding:"0",overflow:"hidden"}},
     h("button",{
       style:{width:"100%",background:"none",border:"none",padding:"10px 14px",
         display:"flex",alignItems:"center",justifyContent:"space-between",
         cursor:"pointer",fontFamily:"monospace"},
-      onclick:formulaToggle},
+      onclick:()=>{
+        const nowOpen=!appState.rxFormulaOpen;
+        appState.rxFormulaOpen=nowOpen;
+        formulaContentDiv.style.display=nowOpen?"block":"none";
+        formulaChevron.textContent=nowOpen?"▲":"▼";
+      }},
       h("span",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#9370a0",textTransform:"uppercase"}},
         "Score Formula"),
-      h("span",{style:{fontSize:"12px",color:"#94a3b8"}}, formulaOpen?"▲":"▼")
+      formulaChevron
     ),
-    formulaOpen?h("div",{style:{padding:"0 10px 12px",borderTop:"1px solid #f1f5f9",lineHeight:"1.6",color:"#374151",fontSize:"11px"}},
-      (()=>{
-        const row=(labelTex, rhsTex)=>{
-          const d=h("div",{style:{display:"flex",alignItems:"center",gap:"4px",marginBottom:"3px",overflow:"hidden"}});
-          d.appendChild(tex(labelTex));
-          d.appendChild(h("span",{style:{color:"#6b0070",fontWeight:"700",fontSize:"11px"}}," = "));
-          d.appendChild(tex(rhsTex));
-          return d;
-        };
-        const wrap=h("div",{style:{marginTop:"12px"}});
-        wrap.appendChild(row("\\mathcal{S}","\\textstyle\\iint H \\cdot Q^{\\beta} \\cdot G \\cdot dA - \\mu F"));
-        wrap.appendChild(row("Q(\\theta_c)","\\dfrac{2}{2 + \\theta_c}"));
-        wrap.appendChild(row("G","e^{-d^2/2\\sigma^2}"));
-        wrap.appendChild(row("dA","\\sin(\\theta_c)\\,\\dfrac{d\\theta_c}{d\\theta_n}\\,d\\theta_n\\,d\\varphi"));
-        wrap.appendChild(row("F","\\textstyle\\iint H \\cdot G \\cdot B\\,dA"));
-        wrap.appendChild(row("B","n_u/8"));
-        const finalRow=h("div",{style:{marginTop:"6px",paddingTop:"6px",borderTop:"1px solid #e8d0ec",display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}});
-        finalRow.appendChild(h("span",{style:{fontSize:"11px",color:"#6b7280",fontFamily:"monospace"}},"Final: "));
-        finalRow.appendChild(tex("\\tilde{S} = S/S_{\\max} - \\mu(F/F_{\\max})"));
-        wrap.appendChild(finalRow);
-        return wrap;
-      })()
-    ):null
+    formulaContentDiv
   );
 
   const leftCtrl=h("div",{style:colStyle},
@@ -2436,49 +2446,59 @@ function renderPrescription() {
 
   // rxCard removed — manualCard (Option C) is the unified prescription component
 
-  // ── OPTIMIZATION DETAILS — collapsible ──────────────────────────────────
+  // ── OPTIMIZATION DETAILS — collapsible, in-place toggle (no render/scroll reset) ──
   const detailsOpen = appState.rxDetailsOpen??false;
-  const detailsToggle=()=>{appState.rxDetailsOpen=!detailsOpen; render();};
-  const detailsCard=rx.optima||sc?h("div",{style:{...card(),padding:"0",overflow:"hidden"}},
+  // Build content once
+  const _detailsContent = (rx.optima||sc) ? h("div",{style:{padding:"0 14px 14px",borderTop:"1px solid #f1f5f9"}},
+    sc?h("div",{style:{marginTop:"12px",marginBottom:"12px"}},
+      h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#64748b",
+        textTransform:"uppercase",fontFamily:"monospace",marginBottom:"6px"}},"Current Position Score"),
+      h("div",{style:{fontSize:"12px",color:"#374151",fontFamily:"monospace",lineHeight:"2"}},
+        "Main integral: ",h("strong",null,sc.mainScore.toExponential(3)),h("br"),
+        "Fragmentation F: ",h("strong",null,sc.F.toExponential(3)),h("br"),
+        "Cells evaluated: ",h("strong",null,sc.cellCount)
+      )
+    ):null,
+    rx.optima?h("div",null,
+      h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#64748b",
+        textTransform:"uppercase",fontFamily:"monospace",marginBottom:"8px"}},"All Optima"),
+      ...[
+        {key:"Aonly",   label:"β=0.05 (Near area-only)", color:"#166534"},
+        {key:"Conly",   label:"β=1 (Acuity-weighted)", color:"#1e90ff"},
+        {key:"weighted",label:`β=${rx.beta.toFixed(2)} (your setting)`, color:"#c2500a"},
+      ].map(({key,label,color})=>{
+        const o=rx.optima[key];
+        return h("div",{style:{marginBottom:"6px",padding:"7px 10px",background:`${color}10`,
+          border:`1px solid ${color}40`,borderRadius:"4px"}},
+          h("div",{style:{fontWeight:"700",color,fontSize:"11px",fontFamily:"monospace"}},label),
+          h("div",{style:{fontSize:"11px",color:"#374151",marginTop:"2px",fontFamily:"monospace"}},
+            `α_n=${o.alpha.toFixed(1)}° · α_c=${o.alpha_c.toFixed(1)}° · γ=${o.gamma}° · score=${o.score.toFixed(3)}`
+          )
+        );
+      })
+    ):null
+  ) : null;
+  const detailsContentDiv = _detailsContent
+    ? h("div",{style:{display:detailsOpen?"block":"none"}}, _detailsContent)
+    : null;
+  const detailsChevron = h("span",{style:{fontSize:"12px",color:"#94a3b8"}}, detailsOpen?"▲":"▼");
+  const detailsCard = (rx.optima||sc) ? h("div",{style:{...card(),padding:"0",overflow:"hidden"}},
     h("button",{
       style:{width:"100%",background:"none",border:"none",padding:"10px 14px",
         display:"flex",alignItems:"center",justifyContent:"space-between",
         cursor:"pointer",fontFamily:"monospace"},
-      onclick:detailsToggle},
+      onclick:()=>{
+        const nowOpen=!appState.rxDetailsOpen;
+        appState.rxDetailsOpen=nowOpen;
+        if(detailsContentDiv) detailsContentDiv.style.display=nowOpen?"block":"none";
+        detailsChevron.textContent=nowOpen?"▲":"▼";
+      }},
       h("span",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#9370a0",textTransform:"uppercase"}},
         "Optimization Details"),
-      h("span",{style:{fontSize:"12px",color:"#94a3b8"}}, detailsOpen?"▲":"▼")
+      detailsChevron
     ),
-    detailsOpen?h("div",{style:{padding:"0 14px 14px",borderTop:"1px solid #f1f5f9"}},
-      sc?h("div",{style:{marginTop:"12px",marginBottom:"12px"}},
-        h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#64748b",
-          textTransform:"uppercase",fontFamily:"monospace",marginBottom:"6px"}},"Current Position Score"),
-        h("div",{style:{fontSize:"12px",color:"#374151",fontFamily:"monospace",lineHeight:"2"}},
-          "Main integral: ",h("strong",null,sc.mainScore.toExponential(3)),h("br"),
-          "Fragmentation F: ",h("strong",null,sc.F.toExponential(3)),h("br"),
-          "Cells evaluated: ",h("strong",null,sc.cellCount)
-        )
-      ):null,
-      rx.optima?h("div",null,
-        h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#64748b",
-          textTransform:"uppercase",fontFamily:"monospace",marginBottom:"8px"}},"All Optima"),
-        ...[
-          {key:"Aonly",   label:"β=0.05 (Near area-only)", color:"#166534"},
-          {key:"Conly",   label:"β=1 (Acuity-weighted)", color:"#1e90ff"},
-          {key:"weighted",label:`β=${rx.beta.toFixed(2)} (your setting)`, color:"#c2500a"},
-        ].map(({key,label,color})=>{
-          const o=rx.optima[key];
-          return h("div",{style:{marginBottom:"6px",padding:"7px 10px",background:`${color}10`,
-            border:`1px solid ${color}40`,borderRadius:"4px"}},
-            h("div",{style:{fontWeight:"700",color,fontSize:"11px",fontFamily:"monospace"}},label),
-            h("div",{style:{fontSize:"11px",color:"#374151",marginTop:"2px",fontFamily:"monospace"}},
-              `α_n=${o.alpha.toFixed(1)}° · α_c=${o.alpha_c.toFixed(1)}° · γ=${o.gamma}° · score=${o.score.toFixed(3)}`
-            )
-          );
-        })
-      ):null
-    ):null
-  ):null;
+    detailsContentDiv
+  ) : null;
 
   const rightCtrl=h("div",{style:colStyle},
     manualCard, detailsCard
