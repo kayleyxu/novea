@@ -2093,7 +2093,7 @@ function renderPrescription() {
     makeSlider("σ — Task Radius",2,20,0.5,rx.sigma,"#cc3300","σ=5°≈reading · σ=20°≈large field · rings show 1σ and 2σ",v=>`${v}°`,v=>{appState.rx.sigma=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
     makeSlider("β — Acuity Emphasis",0.05,1,0.05,rx.beta,"#5b9bd5","β=0.05: near area-only · β=1: full acuity weight",v=>v.toFixed(2),v=>{appState.rx.beta=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
     makeSlider("μ — Fragmentation Penalty",0,1,0.05,rx.mu,"#6b0070","Penalizes landing zones near lesion edges",v=>v.toFixed(2),v=>{appState.rx.mu=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}),
-    (patientDataR&&(patientDataR.distortCells?.size>0||patientDataR.distortDeg2>0))?makeSlider("ρ — Distortion Health",0,0.8,0.05,rx.hDistort??0.3,"#d97706","Partial H for metamorphopsia cells · 0=no contribution · 0.3=default · 0.8=near-healthy",v=>v.toFixed(2),v=>{appState.rx.hDistort=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}):null
+    (patientDataR&&(patientDataR.distortCells?.size>0||patientDataR.distortDeg2>0))?makeSlider("ρ — Distortion Health",0,1.0,0.05,rx.hDistort??0.3,"#d97706","Partial H for metamorphopsia cells · 0=no contribution · 0.3=default · 1.0=fully healthy",v=>v.toFixed(2),v=>{appState.rx.hDistort=v;appState.rx.status="stale";if(appState.rxEV.status==="done")appState.rxEV.status="stale";}):null
   );
 
   const rxDone = (rx.status==="done"||rx.status==="computing"||rx.status==="stale") && rx.alpha_c>0;
@@ -2539,7 +2539,7 @@ function renderPrescription() {
         mkSlL("β — Acuity Emphasis",0.05,1,0.05,rxL.beta,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>{appState.rxLeft.beta=v;appState.rxLeft.status="stale";}),
         mkSlL("μ — Fragmentation Penalty",0,1,0.05,rxL.mu,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>{appState.rxLeft.mu=v;appState.rxLeft.status="stale";}),
         (patientDataL&&(patientDataL.distortCells?.size>0||patientDataL.distortDeg2>0))
-          ?sliderEl({label:"ρ — Distortion Health",min:0,max:0.8,step:0.05,val:rxL.hDistort??0.3,
+          ?sliderEl({label:"ρ — Distortion Health",min:0,max:1.0,step:0.05,val:rxL.hDistort??0.3,
               color:"#d97706",note:"Partial H for distortion cells",fmt:v=>v.toFixed(2),
               onLiveInput:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; },
               onChange:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; render(); }})
@@ -2651,7 +2651,7 @@ function renderPrescription() {
       const evBetaSlider= mkSlEV("β — Acuity Emphasis",0.05,1,0.05,evRx.beta??0.5,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>{appState.rxEV.beta=v;appState.rxEV.status="stale";});
       const evMuSlider=   mkSlEV("μ — Fragmentation Penalty",0,1,0.05,evRx.mu??0.2,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>{appState.rxEV.mu=v;appState.rxEV.status="stale";});
       const evRhoSlider=(patientDataR&&(patientDataR.distortDeg2>0||patientDataR.distortCells?.size>0))||(patientDataL&&(patientDataL.distortDeg2>0||patientDataL.distortCells?.size>0))
-        ?mkSlEV("ρ — Distortion Health",0,0.8,0.05,evRx.hDistort??0.3,"#d97706","Partial H for distortion cells",v=>v.toFixed(2),v=>{appState.rxEV.hDistort=v;appState.rxEV.status="stale";})
+        ?mkSlEV("ρ — Distortion Health",0,1.0,0.05,evRx.hDistort??0.3,"#d97706","Partial H for distortion cells",v=>v.toFixed(2),v=>{appState.rxEV.hDistort=v;appState.rxEV.status="stale";})
         :null;
 
       const runBtnEV=h("button",{
