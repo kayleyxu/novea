@@ -2084,7 +2084,7 @@ function renderPrescription() {
       // Live drag: mutate state directly, zero DOM rebuild
       onLiveInput:(v)=>{ onCh(v); },
       // Mouseup: full render to sync UI
-      onChange:(v)=>{ onCh(v); render(); }
+      onChange:(v)=>{ onCh(v); redrawMaps(); }
     });
   };
 
@@ -2531,7 +2531,7 @@ function renderPrescription() {
 
       const mkSlL=(label,min,max,step,val,color,note,fmt,onCh)=>sliderEl({label,min,max,step,val,color,note,fmt,
         onLiveInput:v=>{ onCh(v); },
-        onChange:v=>{ onCh(v); render(); }});
+        onChange:v=>{ onCh(v); redrawMaps(); }});
 
       const leftSlidersCard=h("div",{style:card()},
         secLabel("Score Parameters"),
@@ -2542,7 +2542,7 @@ function renderPrescription() {
           ?sliderEl({label:"ρ — Distortion Health",min:0,max:1.0,step:0.05,val:rxL.hDistort??0.3,
               color:"#d97706",note:"Partial H for distortion cells",fmt:v=>v.toFixed(2),
               onLiveInput:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; },
-              onChange:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; render(); }})
+              onChange:v=>{ appState.rxLeft.hDistort=v; appState.rxLeft.status="stale"; redrawMaps(); }})
           :null
       );
 
@@ -2640,13 +2640,13 @@ function renderPrescription() {
 
       const mkSlEV=(label,min,max,step,val,color,note,fmt,onCh)=>sliderEl({label,min,max,step,val,color,note,fmt,
         onLiveInput:v=>{ onCh(v); },
-        onChange:v=>{ onCh(v); render(); }});
+        onChange:v=>{ onCh(v); redrawMaps(); }});
 
       const omegaSlider=sliderEl({label:"ω — Right Eye Weight",min:0,max:1,step:0.05,val:omega,
         color:"#7c3aed",note:"ω=1: right only · ω=0.5: equal · ω=0: left only",
         fmt:v=>v.toFixed(2),
         onLiveInput:v=>{ appState.rxEV.omega=v; appState.rxEV.status="stale"; },
-        onChange:v=>{ appState.rxEV.omega=v; render(); }});
+        onChange:v=>{ appState.rxEV.omega=v; redrawMaps(); }});
       const evSigmaSlider=mkSlEV("σ — Task Radius",2,20,0.5,evRx.sigma??5,"#cc3300","Task radius",v=>`${v}°`,v=>{appState.rxEV.sigma=v;appState.rxEV.status="stale";});
       const evBetaSlider= mkSlEV("β — Acuity Emphasis",0.05,1,0.05,evRx.beta??0.5,"#5b9bd5","Acuity weight",v=>v.toFixed(2),v=>{appState.rxEV.beta=v;appState.rxEV.status="stale";});
       const evMuSlider=   mkSlEV("μ — Fragmentation Penalty",0,1,0.05,evRx.mu??0.2,"#6b0070","Frag penalty",v=>v.toFixed(2),v=>{appState.rxEV.mu=v;appState.rxEV.status="stale";});
@@ -2815,6 +2815,53 @@ function renderApp() {
  * Note: Some interactions (zoom buttons, landing zone checkboxes) bypass
  * render() entirely and patch the DOM directly to avoid resetting scroll.
  */
+/**
+ * Redraws only the prescription map canvases — no DOM rebuild, no scroll reset.
+ * Used by slider onChange handlers so dragging a slider doesn't jump the page.
+ */
+function redrawMaps() {
+  if (appState.screen!=="prescription") return;
+  requestAnimationFrame(()=>{
+    if (_rxMapCanvasRef) {
+      const rx2=appState.rx;
+      const pd2=appState.patientDataRight||appState.patientData;
+      const pt2=pd2?pd2.patient:PATIENT_C;
+      const show=(rx2.status==="done"||rx2.status==="computing"||rx2.status==="stale")&&rx2.alpha_c>0;
+      drawRetinalMap(_rxMapCanvasRef,pt2,show?thetaNodal(rx2.alpha_c):0,
+        show?rx2.gamma:0,rx2.sigma,rx2.committedSigma,show?rx2.optima:null,480,pd2?pd2.eye:"right");
+    }
+    if (_rxMapCanvasRefL&&appState.binocularMode) {
+      const rxL2=appState.rxLeft;
+      const pdL2=appState.patientDataLeft;
+      if(pdL2&&_rxMapCanvasRefL){
+        const showL=(rxL2.status==="done"||rxL2.status==="computing"||rxL2.status==="stale")&&rxL2.alpha_c>0;
+        drawRetinalMap(_rxMapCanvasRefL,pdL2.patient,showL?thetaNodal(rxL2.alpha_c):0,
+          showL?rxL2.gamma:0,rxL2.sigma,rxL2.committedSigma,showL?rxL2.optima:null,480,"left");
+      }
+    }
+    if (appState.binocularMode) {
+      const ev2=appState.rxEV;
+      const pdR2=appState.patientDataRight||appState.patientData;
+      const pdL2=appState.patientDataLeft;
+      const showEV=(ev2.status==="done"||ev2.status==="computing"||ev2.status==="stale")&&ev2.alpha_c>0;
+      const evAlpha=showEV?thetaNodal(ev2.alpha_c):0;
+      const evGamma=showEV?ev2.gamma:0;
+      const evOptima=showEV?ev2.optima:null;
+      const evSigma=ev2.committedSigma||appState.rx.sigma;
+      const mirrorGamma=g=>(180-g+360)%360;
+      const evOptimaL=evOptima?{
+        Aonly:evOptima.Aonly?{...evOptima.Aonly,gamma:mirrorGamma(evOptima.Aonly.gamma)}:null,
+        Conly:evOptima.Conly?{...evOptima.Conly,gamma:mirrorGamma(evOptima.Conly.gamma)}:null,
+        weighted:evOptima.weighted?{...evOptima.weighted,gamma:mirrorGamma(evOptima.weighted.gamma)}:null,
+      }:null;
+      if(_rxMapCanvasRefEVR&&pdR2)
+        drawRetinalMap(_rxMapCanvasRefEVR,pdR2.patient,evAlpha,evGamma,appState.rx.sigma,evSigma,evOptima,480,"right");
+      if(_rxMapCanvasRefEVL&&pdL2)
+        drawRetinalMap(_rxMapCanvasRefEVL,pdL2.patient,evAlpha,mirrorGamma(evGamma),appState.rxLeft.sigma,evSigma,evOptimaL,480,"left");
+    }
+  });
+}
+
 function render() {
   renderApp();
   // Re-draw canvases after render
