@@ -1762,13 +1762,31 @@ function rxAutoRun(eye) {
   const progressPerBeta = new Array(3).fill(0);
   const betaKeys = ['Aonly','Conly','weighted'];
 
+  // Patch the run button in-place — no render(), no scroll reset
+  const _patchRunBtn = (pct) => {
+    const btn = document.getElementById("rx-run-btn");
+    if (!btn) return;
+    btn.textContent = `▶  Generate Prescription  ${pct}%`;
+    btn.style.background = `linear-gradient(90deg, #8b2090 ${pct}%, #d8b8dc ${pct}%)`;
+    btn.style.color = "#ffffff";
+    btn.style.border = "1px solid #8b2090";
+    btn.disabled = true;
+  };
+
   const updateProgress = () => {
     const completed = progressPerBeta.reduce((a,b)=>a+b,0);
     const pct = Math.min(99, Math.round(completed / totalWork * 100));
-    setFn({status:"computing", progress:pct});
+    // Mutate state silently — no render()
+    const rxSlot = isLeft ? appState.rxLeft : appState.rx;
+    rxSlot.status = "computing";
+    rxSlot.progress = pct;
+    _patchRunBtn(pct);
   };
 
-  setFn({status:"computing", progress:0});
+  // Initial state — mutate directly, patch button
+  (isLeft ? appState.rxLeft : appState.rx).status = "computing";
+  (isLeft ? appState.rxLeft : appState.rx).progress = 0;
+  _patchRunBtn(0);
   const results = {};
   const betas = {Aonly:0.05, Conly:1, weighted:rx.beta};
   let done = 0;
@@ -2236,6 +2254,7 @@ function renderPrescription() {
   const runBtnCol = isComp?"#ffffff" : rx.status==="stale"?"#7a3800" : "#ffffff";
   const runBtnBdr = isComp?"1px solid #8b2090" : rx.status==="stale"?"1px solid #f0a000" : "1px solid #4a0050";
   const runBtn=h("button",{
+    id:"rx-run-btn",
     style:btnStyle({width:"100%",padding:"12px",borderRadius:"4px",fontSize:"13px",fontWeight:"700",
       background:runBtnBg, color:runBtnCol, border:runBtnBdr,
       boxShadow:rx.status==="stale"?"0 0 0 3px rgba(240,160,0,0.2)":isComp?"none":"0 2px 8px rgba(107,0,112,0.35)"}),
@@ -2863,7 +2882,15 @@ function redrawMaps() {
 }
 
 function render() {
+  // Save scroll position before DOM rebuild, restore after — prevents jump on prescription screen
+  const _contentWrap = document.querySelector("#app > div:last-child");
+  const _scrollTop = _contentWrap ? _contentWrap.scrollTop : 0;
   renderApp();
+  // Restore scroll after new contentWrap is inserted
+  if (_scrollTop > 0) {
+    const _newWrap = document.querySelector("#app > div:last-child");
+    if (_newWrap) _newWrap.scrollTop = _scrollTop;
+  }
   // Re-draw canvases after render
   const d=appState.diag;
   if (appState.screen==="diagnostic"&&d.step==="draw") {
