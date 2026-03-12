@@ -328,7 +328,7 @@ function buildMaskFromArrays(dmgMask, satellites=[], annularExclusions=[]) {
 /**
  * Builds a retinal damage map from a list of shape functions (closures).
  * Each function in `regions` takes (x, y) and returns true if that point
- * is damaged. This is only used for the built-in demo patient (PATIENT_C)
+ * is damaged. This is only used for the built-in demo patients
  * because it's slower — it tests every grid cell against every shape.
  * Patient drawings from the Amsler grid use buildMaskFromArrays instead.
  *
@@ -463,24 +463,42 @@ function buildMaskFromAmsler(scotomaCells, subScotomaCells, distortCells) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PATIENT C — demo fallback
 // ═══════════════════════════════════════════════════════════════════════════════
-const PATIENT_C = (()=>{
-  const rng=makeRng(77);
-  const centralDisk=(x,y)=>x*x+y*y<7*7;
-  const core=makeSmoothRegion(0,0,ang=>{
-    if(ang>=97&&ang<=145) return 5.5;
-    if(ang>=68&&ang<=97)  return 7.5;
-    if(ang>=38&&ang<=68)  return 9;
-    if(ang>=350||ang<=38) return 9.5;
-    if(ang>=145&&ang<=178) return 5.5+(ang-145)/(178-145)*9.5;
-    if(ang>=178&&ang<=205) return 15+(ang-178)/(205-178)*(6-15);
-    if(ang>=205&&ang<=220) return 6;
-    if(ang>=220&&ang<=245) return 6+(ang-220)/(245-220)*9;
-    if(ang>=245&&ang<=268) return 15;
-    if(ang>=268&&ang<=308) return 13;
-    if(ang>=308&&ang<=350) return 11;
-    return 7;
-  },1.8,rng,14);
-  return buildMask([core,centralDisk],[{cx:-4.79,cy:13.16,r:1.5}],[]);
+// ── Demo patient scotoma data (real patient scans) ──────────────────────────
+const _DEMO_R_SCOTOMA = new Set(["11,19"]);
+const _DEMO_R_SUB = new Set(["21,28","22,28","23,28","23,29","24,29","24,30","24,31","25,31","25,32","25,33","25,34","26,34","26,35","27,35","27,36","28,36","28,37","29,37","30,37","31,37","31,38","32,38","33,38","34,38","34,37","35,37","36,37","36,36","37,36","37,35","38,35","38,34","38,33","39,33","39,32","39,31","39,30","39,29","38,29","38,28","37,28","36,28","36,27","35,27","35,26","34,26","33,26","32,26","32,25","32,24","32,23","31,23","31,22","30,22","29,22","29,21","28,21","27,21","26,21","25,21","24,21","23,21","22,21","21,22","21,23","21,24","21,25","21,26","21,27","22,27","30,30","31,30","29,30","30,31","30,29","32,30","31,31","31,29","28,30","29,31","29,29","30,32","30,28","33,30","32,31","32,29","31,32","31,28","27,30","28,31","28,29","29,32","29,28","30,33","30,27","34,30","33,31","33,29","32,32","32,28","31,33","31,27","26,30","27,31","27,29","28,32","28,28","29,33","29,27","30,34","30,26","35,30","34,31","34,29","33,32","33,28","32,33","32,27","31,34","31,26","25,30","26,31","26,29","27,32","27,28","28,33","28,27","29,34","29,26","30,35","30,25","36,30","35,31","35,29","34,32","34,28","33,33","33,27","32,34","31,35","31,25","25,29","26,32","26,28","27,33","27,27","28,34","28,26","29,35","29,25","30,36","30,24","37,30","36,31","36,29","35,32","35,28","34,33","34,27","33,34","32,35","31,36","31,24","25,28","26,33","26,27","27,34","27,26","28,35","28,25","29,36","29,24","30,23","38,30","37,31","37,29","36,32","35,33","34,34","33,35","32,36","24,28","25,27","26,26","27,25","28,24","29,23","38,31","37,32","36,33","35,34","34,35","33,36","32,37","24,27","25,26","26,25","27,24","28,23","38,32","37,33","36,34","35,35","34,36","33,37","23,27","24,26","25,25","26,24","27,23","28,22","37,34","36,35","35,36","23,26","24,25","25,24","26,23","27,22","22,26","23,25","24,24","25,23","26,22","22,25","23,24","24,23","25,22","22,24","23,23","24,22","22,23","23,22","22,22"]);
+const _DEMO_R_DISTORT = new Set(["17,8","18,9"]);
+const _DEMO_L_SCOTOMA = new Set([]);
+const _DEMO_L_SUB = new Set(["33,33","32,33","32,34","31,34","31,35","30,35","30,36","29,36","29,37","28,37","27,37","27,38","26,38","25,38","24,38","23,38","23,37","22,37","22,36","21,36","21,35","20,35","20,34","20,33","20,32","20,31","20,30","20,29","20,28","20,27","20,26","20,25","21,25","21,24","21,23","21,22","22,22","22,21","23,21","23,20","24,20","25,20","26,20","27,20","28,20","29,20","30,20","30,21","31,21","32,21","32,22","33,22","34,22","34,23","35,23","36,23","37,23","38,23","38,22","37,22","37,24","38,24","38,25","38,26","37,26","37,27","37,28","37,29","36,29","36,30","35,30","35,31","34,32","33,32","32,32","30,30","31,30","29,30","30,31","30,29","32,30","31,31","31,29","28,30","29,31","29,29","30,32","30,28","33,30","32,31","32,29","31,32","31,28","27,30","28,31","28,29","29,32","29,28","30,33","30,27","34,30","33,31","33,29","32,28","31,33","31,27","26,30","27,31","27,29","28,32","28,28","29,33","29,27","30,34","30,26","34,31","34,29","33,28","32,27","31,26","25,30","26,31","26,29","27,32","27,28","28,33","28,27","29,34","29,26","30,25","35,29","34,28","33,27","32,26","31,25","24,30","25,31","25,29","26,32","26,28","27,33","27,27","28,34","28,26","29,35","29,25","30,24","35,28","34,27","33,26","32,25","31,24","23,30","24,31","24,29","25,32","25,28","26,33","26,27","27,34","27,26","28,35","28,25","29,24","30,23","36,28","35,27","34,26","33,25","32,24","31,23","22,30","23,31","23,29","24,32","24,28","25,33","25,27","26,34","26,26","27,35","27,25","28,36","28,24","29,23","30,22","36,27","35,26","34,25","33,24","32,23","31,22","21,30","22,31","22,29","23,32","23,28","24,33","24,27","25,34","25,26","26,35","26,25","27,36","27,24","28,23","29,22","36,26","35,25","34,24","33,23","21,31","21,29","22,32","22,28","23,33","23,27","24,34","24,26","25,35","25,25","26,36","26,24","27,23","28,22","29,21","36,25","35,24","21,32","21,28","22,33","22,27","23,34","23,26","24,35","24,25","25,36","25,24","26,37","26,23","27,22","28,21","37,25","36,24","21,33","21,27","22,34","22,26","23,35","23,25","24,36","24,24","25,37","25,23","26,22","27,21","21,34","21,26","22,35","22,25","23,36","23,24","24,37","24,23","25,22","26,21","22,24","23,23","24,22","25,21","22,23","23,22","24,21"]);
+const _DEMO_L_DISTORT = new Set([]);
+
+// Build demo masks once at startup
+const PATIENT_DEMO_R = (()=>{
+  const pd = buildMaskFromAmsler(_DEMO_R_SCOTOMA, _DEMO_R_SUB, _DEMO_R_DISTORT);
+  return {
+    patient: pd,
+    scotomaCells: new Set(_DEMO_R_SCOTOMA),
+    subScotomaCells: new Set(_DEMO_R_SUB),
+    distortCells: new Set(_DEMO_R_DISTORT),
+    eye: "right",
+    wholeCells: _DEMO_R_SCOTOMA.size,
+    subCells: _DEMO_R_SUB.size,
+    totalDeg2: 59.5,
+    distortDeg2: 2
+  };
+})();
+const PATIENT_DEMO_L = (()=>{
+  const pd = buildMaskFromAmsler(_DEMO_L_SCOTOMA, _DEMO_L_SUB, _DEMO_L_DISTORT);
+  return {
+    patient: pd,
+    scotomaCells: new Set(_DEMO_L_SCOTOMA),
+    subScotomaCells: new Set(_DEMO_L_SUB),
+    distortCells: new Set(_DEMO_L_DISTORT),
+    eye: "left",
+    wholeCells: _DEMO_L_SCOTOMA.size,
+    subCells: _DEMO_L_SUB.size,
+    totalDeg2: 68.25,
+    distortDeg2: 0
+  };
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -707,6 +725,15 @@ let appState = {
     alpha_c:0, gamma:0, status:"idle", optima:null, committedSigma:5,
     omega:0.5, sigma:5, beta:0.5, mu:0.2, hDistort:0.3
   },
+  rxMS: {               // binocular MS co-prescription (v8)
+    status:"idle",
+    alpha_cR:0, gammaR:0, alpha_cL:0, gammaL:0,
+    deltaAlpha:2, deltaGamma:15,
+    omega:0.5, sigma:5, beta:0.5, mu:0.2, hDistort:0.3,
+    optima:null
+  },
+  mapZoomMSR:{scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
+  mapZoomMSL:{scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
   mapZoom:   {scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
   mapZoomL:  {scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
   mapZoomEVR:{scale:1,ox:0,oy:0,dragging:false,lastX:0,lastY:0},
@@ -736,8 +763,20 @@ function setDiag(patch) {
   Object.assign(appState.diag, patch);
   render();
 }
+/**
+ * Updates the right-eye (or single-eye) prescription slot and re-renders.
+ * @param {object} patch - Key-value pairs to merge into appState.rx
+ */
 function setRx(patch)     { Object.assign(appState.rx,     patch); render(); }
+/**
+ * Updates the left-eye prescription slot and re-renders.
+ * @param {object} patch - Key-value pairs to merge into appState.rxLeft
+ */
 function setRxLeft(patch) { Object.assign(appState.rxLeft, patch); render(); }
+/**
+ * Updates the shared Eccentric Viewing prescription slot and re-renders.
+ * @param {object} patch - Key-value pairs to merge into appState.rxEV
+ */
 function setRxEV(patch)   { Object.assign(appState.rxEV,   patch); render(); }
 
 // roundRect polyfill for older browsers
@@ -1088,6 +1127,16 @@ function rasterizeCurveToGrid(pts, subN, subCellPx) {
   return new Set([...wallSet,...filled]);
 }
 
+/**
+ * Converts a mouse or touch event position into canvas pixel coordinates.
+ * Handles the case where the canvas is displayed smaller than its internal
+ * resolution (e.g. scaled down for iPad) by applying the correct ratio.
+ * Returns null if the click/touch was outside the canvas boundary.
+ *
+ * @param {Event}             e      - Mouse or touch event
+ * @param {HTMLCanvasElement} canvas - The canvas element
+ * @returns {{x, y}|null} Canvas-space coordinates, or null if out of bounds
+ */
 function getCanvasXY(e, canvas) {
   const rect=canvas.getBoundingClientRect();
   const x=(e.clientX-rect.left)*(CANVAS_PX/rect.width);
@@ -1095,6 +1144,15 @@ function getCanvasXY(e, canvas) {
   if (x<0||x>CANVAS_PX||y<0||y>CANVAS_PX) return null;
   return {x,y};
 }
+/**
+ * Converts canvas pixel coordinates into an Amsler grid cell key "col,row".
+ * The grid is GRID_N × GRID_N cells; each cell is CELL_PX pixels wide.
+ * Returns null if the coordinates are outside the grid.
+ *
+ * @param {number} x - Canvas x coordinate in pixels
+ * @param {number} y - Canvas y coordinate in pixels
+ * @returns {string|null} Cell key like "14,8", or null if outside grid
+ */
 function getCellFromXY(x,y) {
   const col=Math.floor(x/CELL_PX), row=Math.floor(y/CELL_PX);
   if (col<0||col>=GRID_N||row<0||row>=GRID_N) return null;
@@ -1144,6 +1202,15 @@ function h(tag, attrs, ...children) {
 }
 
 // KaTeX render helper — returns a <span> with rendered math
+/**
+ * Renders a LaTeX math formula into an HTML span using the KaTeX library.
+ * Used throughout the prescription screen to display the scoring formula.
+ * If KaTeX fails (e.g. bad LaTeX syntax), falls back to showing raw text.
+ *
+ * @param {string}  latex   - The LaTeX string to render (e.g. "\\sigma^2")
+ * @param {boolean} display - If true, renders in display (centred block) mode
+ * @returns {HTMLElement} A <span> containing the rendered formula
+ */
 function tex(latex, display=false) {
   const span = document.createElement("span");
   span.style.cssText = display
@@ -1159,15 +1226,38 @@ function tex(latex, display=false) {
 
 
 // ─── reusable helpers ─────────────────────────────────────────────────────────
+/**
+ * Returns a base style object for buttons used throughout the app.
+ * Extra properties can be passed to override or extend the defaults.
+ * Used with the h() helper: h("button", {style: btnStyle({color:"red"})})
+ *
+ * @param {object} extra - Additional style properties to merge in
+ * @returns {object} A CSS style object
+ */
 function btnStyle(extra={}) {
   return {padding:"9px 16px",border:"none",borderRadius:"4px",cursor:"pointer",
     fontSize:"12px",fontFamily:"monospace",fontWeight:"700",transition:"all 0.15s",...extra};
 }
+/**
+ * Returns a base style object for white card panels used throughout
+ * the prescription screen. Adds a subtle border, border-radius, padding
+ * and drop shadow. Extra properties can override the defaults.
+ *
+ * @param {object} extra - Additional style properties to merge in
+ * @returns {object} A CSS style object
+ */
 function card(extra={}) {
   return {background:"#ffffff",border:"1px solid #e8d0ec",borderRadius:"8px",
     padding:"14px 16px",marginBottom:"12px",
     boxShadow:"0 1px 4px rgba(107,0,112,0.07)",...extra};
 }
+/**
+ * Creates a small all-caps purple section heading element.
+ * Used as the title inside card panels (e.g. "SCORE PARAMETERS").
+ *
+ * @param {string} text - The label text to display
+ * @returns {HTMLElement} A styled <span> element
+ */
 function secLabel(text) {
   return h("span",{style:{fontSize:"11px",fontWeight:"700",letterSpacing:"2px",color:"#6b0070",
     textTransform:"uppercase",display:"block",marginBottom:"10px",fontFamily:"monospace",
@@ -1264,6 +1354,147 @@ function loadDamageMap(file, forceEye) {
   reader.readAsText(file);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// v8 — BINOCULAR MS CO-PRESCRIPTION OPTIMIZER
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Returns the smallest angular difference between two azimuths (0–360°).
+ * Result is in [0, 180].
+ */
+function angDiff(a, b) {
+  const d = Math.abs(((a - b) + 360) % 360);
+  return d > 180 ? 360 - d : d;
+}
+
+/**
+ * Binocular MS co-prescription optimizer (v8).
+ * Searches independently over (α_R, γ_R) and (α_L, γ_L), maximising
+ * ω·S_R + (1−ω)·S_L subject to:
+ *   |α_R − α_L| ≤ deltaAlpha  and  angDiff(γ_R, γ_L) ≤ deltaGamma
+ * Uses the established head-fixed gamma convention (mirroredGamma for left eye).
+ * Does NOT call rxAutoRun, rxAutoRunEV, or findOptimalChunked.
+ */
+function rxAutoRunMS() {
+  const pdR = appState.patientDataRight || appState.patientData;
+  const pdL = appState.patientDataLeft;
+  if (!pdR || !pdL) return;
+  const ms = appState.rxMS;
+  const omega      = ms.omega      ?? 0.5;
+  const deltaAlpha = ms.deltaAlpha ?? 2;
+  const deltaGamma = ms.deltaGamma ?? 15;
+  const beta       = ms.beta       ?? 0.5;
+  const sigma      = ms.sigma      ?? 5;
+  const mu         = ms.mu         ?? 0.2;
+  const hDistort   = ms.hDistort   ?? 0.3;
+
+  const _patch = (pct) => {
+    const btn = document.getElementById("ms-coopt-btn");
+    if (!btn) return;
+    if (pct < 100) {
+      btn.textContent = `▶  Generate MS Co-Prescription  ${pct}%`;
+      btn.style.background = `linear-gradient(90deg,#065f46 ${pct}%,#a7f3d0 ${pct}%)`;
+      btn.style.color = "#fff"; btn.disabled = true;
+    } else {
+      btn.textContent = "▶  Generate MS Co-Prescription";
+      btn.style.background = "#065f46"; btn.style.color = "#fff"; btn.disabled = false;
+    }
+  };
+  _patch(0);
+  appState.rxMS.status = "computing";
+
+  const ac_min = thetaCenter(0.5), ac_max = thetaCenter(35);
+  const acSteps = [];
+  for (let ac = ac_min; ac <= ac_max; ac += 1.4) acSteps.push(ac);
+  const CHUNK = 20;
+  const mirG = g => (180 - g + 360) % 360;
+  let candR = [], candL = [];
+
+  let iR = 0;
+  function buildR() {
+    const end = Math.min(iR + CHUNK, acSteps.length);
+    for (; iR < end; iR++) {
+      const ac = acSteps[iR];
+      for (let g = 0; g < 360; g += 5) {
+        const s = computeScore(pdR.patient, ac, g, sigma, beta, "right", hDistort);
+        if (s) candR.push({ac, g, raw: s.mainScore, F: s.F});
+      }
+    }
+    _patch(Math.round(iR / acSteps.length * 33));
+    if (iR < acSteps.length) { setTimeout(buildR, 0); return; }
+    iL = 0; setTimeout(buildL, 0);
+  }
+
+  let iL = 0;
+  function buildL() {
+    const end = Math.min(iL + CHUNK, acSteps.length);
+    for (; iL < end; iL++) {
+      const ac = acSteps[iL];
+      for (let g = 0; g < 360; g += 5) {
+        const s = computeScore(pdL.patient, ac, mirG(g), sigma, beta, "left", hDistort);
+        if (s) candL.push({ac, g, raw: s.mainScore, F: s.F});
+      }
+    }
+    _patch(33 + Math.round(iL / acSteps.length * 33));
+    if (iL < acSteps.length) { setTimeout(buildL, 0); return; }
+    setTimeout(combine, 0);
+  }
+
+  function combine() {
+    const maxRR = Math.max(...candR.map(c => c.raw)) || 1e-9;
+    const maxFR = Math.max(...candR.map(c => c.F))   || 1e-9;
+    const maxRL = Math.max(...candL.map(c => c.raw)) || 1e-9;
+    const maxFL = Math.max(...candL.map(c => c.F))   || 1e-9;
+
+    // Build maps: key = "ac,g" => normalised score
+    const mapR = new Map(), mapL = new Map();
+    for (const c of candR) {
+      mapR.set(c.ac.toFixed(4)+","+c.g, {sc: c.raw/maxRR - mu*(c.F/maxFR), ac: c.ac, g: c.g});
+    }
+    for (const c of candL) {
+      mapL.set(c.ac.toFixed(4)+","+c.g, {sc: c.raw/maxRL - mu*(c.F/maxFL), ac: c.ac, g: c.g});
+    }
+    _patch(66);
+
+    // Group left candidates by alpha key for faster constraint search
+    const leftByAlpha = new Map();
+    for (const l of mapL.values()) {
+      const aKey = l.ac.toFixed(4);
+      if (!leftByAlpha.has(aKey)) leftByAlpha.set(aKey, []);
+      leftByAlpha.get(aKey).push(l);
+    }
+
+    let bestScore = -Infinity, bestR = null, bestL = null;
+    for (const r of mapR.values()) {
+      const alphaN_R = thetaNodal(r.ac);
+      for (const [aKey, lArr] of leftByAlpha) {
+        if (Math.abs(alphaN_R - thetaNodal(parseFloat(aKey))) > deltaAlpha + 0.05) continue;
+        for (const l of lArr) {
+          if (angDiff(r.g, l.g) > deltaGamma + 0.05) continue;
+          const joint = omega * r.sc + (1 - omega) * l.sc;
+          if (joint > bestScore) { bestScore = joint; bestR = r; bestL = l; }
+        }
+      }
+    }
+
+    // Fallback if no pair found within constraint
+    if (!bestR || !bestL) {
+      bestR = [...mapR.values()].sort((a,b)=>b.sc-a.sc)[0];
+      bestL = [...mapL.values()].sort((a,b)=>b.sc-a.sc)[0];
+    }
+
+    appState.rxMS = { ...appState.rxMS,
+      status:"done",
+      alpha_cR: bestR.ac, gammaR: bestR.g,
+      alpha_cL: bestL.ac, gammaL: bestL.g,
+      optima: {R: bestR, L: bestL, score: bestScore}
+    };
+    _patch(100);
+    render();
+  }
+
+  setTimeout(buildR, 0);
+}
+
 /**
  * Renders the home screen — the first page the user sees.
  * Provides three entry points:
@@ -1297,7 +1528,16 @@ function renderHome() {
         "→ Start with Patient Scan"),
       h("button",{style:btnStyle({padding:"16px 32px",border:"1px solid #d1d9e6",borderRadius:"6px",
         background:"#f0e4f2",color:"#6b0070",fontSize:"14px",border:"1px solid #e8d0ec"}),
-        onclick:()=>{ appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0}; setState({patientData:null,screen:"prescription"}); }},
+        onclick:()=>{
+          appState.patientData=PATIENT_DEMO_R.patient?PATIENT_DEMO_R:null;
+          appState.patientDataRight=PATIENT_DEMO_R;
+          appState.patientDataLeft=PATIENT_DEMO_L;
+          appState.binocularMode=true;
+          appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+          appState.rxLeft={...appState.rxLeft,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+          appState.rxEV={alpha_c:0,gamma:0,status:"idle",optima:null,committedSigma:5,omega:0.5,sigma:5,beta:0.5,mu:0.2,hDistort:0.3};
+          setState({screen:"prescription"});
+        }},
         "Demo Patient")
     ),
     h("div",{style:{marginTop:"20px",display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}},
@@ -1547,6 +1787,16 @@ function renderDiagDraw() {
   return wrap;
 }
 
+/**
+ * Attaches all mouse and touch event listeners to the Amsler grid overlay canvas.
+ * Must be called once after the canvas is inserted into the DOM.
+ * Handles three drawing tools (boundary trace, paint, erase) and touch events.
+ *
+ * For boundary trace: collects points during drag, commits on release.
+ * For paint/erase: applies cell changes on every mousemove during drag.
+ *
+ * @param {HTMLCanvasElement} canvas - The transparent overlay canvas to wire up
+ */
 function wireCanvasEvents(canvas) {
   canvas.onmousedown = (e) => {
     const xy=getCanvasXY(e,canvas); if (!xy) return;
@@ -1609,6 +1859,16 @@ function wireCanvasEvents(canvas) {
   canvas.ontouchend   = (e) => { e.preventDefault(); canvas.onmouseup(); };
 }
 
+/**
+ * Applies the current drawing tool (paint, distortion, or erase) at a single
+ * canvas coordinate. Called on every mousemove during a paint or erase drag.
+ *
+ * Mutates appState.diag.scotomaCells / distortCells directly (no render())
+ * and redraws only the canvas, so dragging stays smooth with no DOM rebuild.
+ * Also patches the counter labels and generate button state directly.
+ *
+ * @param {{x:number, y:number}} xy - Canvas pixel coordinate from getCanvasXY
+ */
 function applyPaintAt(xy) {
   const d=appState.diag;
   const key=getCellFromXY(xy.x,xy.y); if (!key) return;
@@ -1631,6 +1891,17 @@ function applyPaintAt(xy) {
   if(gBtn) gBtn.disabled=d.scotomaCells.size===0&&d.subScotomaCells.size===0&&d.distortCells.size===0;
 }
 
+/**
+ * Called when the patient clicks "GENERATE DAMAGE MAP".
+ * Converts the Amsler grid drawings into a retinal damage mask and
+ * transitions to the Prescription screen.
+ *
+ * Shows a generating spinner immediately, then after a short delay:
+ *   1. Calls buildMaskFromAmsler to convert grid cells → retinal bitmap
+ *   2. Stores the patient data (mask + cell counts) in appState
+ *   3. Enables binocular mode if both eyes are now scanned
+ *   4. Calls setState to navigate to the prescription screen
+ */
 function diagFinish() {
   const d=appState.diag;
   // Show spinner on the button immediately before heavy computation
@@ -1677,6 +1948,8 @@ let _rxMapCanvasRef=null;
 let _rxMapCanvasRefL=null;  // left MS map
 let _rxMapCanvasRefEVR=null; // EV right map
 let _rxMapCanvasRefEVL=null; // EV left map
+let _rxMapCanvasRefMSR=null; // MS co-opt right map (v8)
+let _rxMapCanvasRefMSL=null; // MS co-opt left map  (v8)
 let _rxDebounce=null;
 
 // ─── Chunked optimizer (CSP-safe, non-blocking) ──────────────────────────────
@@ -1708,14 +1981,18 @@ function findOptimalChunked(patient, sigma, beta, mu, eye, hDistort=0.3, onDone,
   let i=0;
   const candidates=[];
 
+  // For left eye, search in head-fixed gamma space:
+  // score at mirroredGamma in retinal coords, store head-fixed g as result.
+  const _mirrorG = (eye==="left") ? (g=>(180-g+360)%360) : (g=>g);
+
   function runChunk() {
     const end=Math.min(i+CHUNK, acSteps.length);
     for(; i<end; i++) {
       const ac=acSteps[i];
       for(let g=0;g<360;g+=5) {
-        const s=computeScore(patient,ac,g,sigma,beta,eye,hDistort);
+        const s=computeScore(patient,ac,_mirrorG(g),sigma,beta,eye,hDistort);
         if(!s) continue;
-        candidates.push({ac,g,raw:s.mainScore,F:s.F});
+        candidates.push({ac,g,raw:s.mainScore,F:s.F}); // g is head-fixed
       }
     }
     if(onProgress) onProgress(i, acSteps.length);
@@ -1752,7 +2029,7 @@ function rxAutoRun(eye) {
   const rx = isLeft ? appState.rxLeft : appState.rx;
   const pd = isLeft ? (appState.patientDataLeft || appState.patientData)
                     : (appState.patientDataRight || appState.patientData);
-  const patient = pd ? pd.patient : PATIENT_C;
+  const patient = pd ? pd.patient : PATIENT_DEMO_R.patient;
   const setFn = isLeft ? setRxLeft : setRx;
   // Compute total ac steps for progress tracking
   const ac_min=thetaCenter(0.5), ac_max=thetaCenter(35);
@@ -1763,8 +2040,9 @@ function rxAutoRun(eye) {
   const betaKeys = ['Aonly','Conly','weighted'];
 
   // Patch the run button in-place — no render(), no scroll reset
+  const _btnId = isLeft ? "rx-run-btn-left" : "rx-run-btn";
   const _patchRunBtn = (pct) => {
-    const btn = document.getElementById("rx-run-btn");
+    const btn = document.getElementById(_btnId);
     if (!btn) return;
     btn.textContent = `▶  Generate Prescription  ${pct}%`;
     btn.style.background = `linear-gradient(90deg, #8b2090 ${pct}%, #d8b8dc ${pct}%)`;
@@ -1812,6 +2090,16 @@ function rxAutoRun(eye) {
 
 // ── EV joint optimizer ────────────────────────────────────────────────────────
 // Single (alpha_c, gamma) maximising omega*RCS_R + (1-omega)*RCS_L
+/**
+ * Runs the joint Eccentric Viewing (EV) optimizer for both eyes simultaneously.
+ * Finds a single (α, γ) pair that maximises the weighted combination:
+ *   score = ω · RCS_right + (1−ω) · RCS_left
+ * where ω (omega) is the right-eye weight slider set by the clinician.
+ *
+ * Runs three variants in parallel (Aonly, Conly, weighted) using chunked
+ * setTimeout loops to stay non-blocking. Results are stored in appState.rxEV
+ * and the prescription screen updates when all three complete.
+ */
 function rxAutoRunEV() {
   const pdR = appState.patientDataRight || appState.patientData;
   const pdL = appState.patientDataLeft;
@@ -1834,7 +2122,13 @@ function rxAutoRunEV() {
         const ac=acSteps[i];
         for(let g=0;g<360;g+=5){
           const sR=computeScore(pdR.patient,ac,g,evRxP.sigma??5,beta,"right",evRxP.hDistort??0.3);
-          const sL=computeScore(pdL.patient,ac,g,evRxP.sigma??5,beta,"left", evRxP.hDistort??0.3);
+          // Left eye must be scored at the mirrored gamma so both eyes
+          // correspond to the same head-fixed gaze direction.
+          // gamma=0 for right eye = patient looks right (nasal R).
+          // For left eye, same head direction = patient looks right = temporal L = gamma=180.
+          // Therefore: gL = (180 - g + 360) % 360
+          const gL=(180-g+360)%360;
+          const sL=computeScore(pdL.patient,ac,gL,evRxP.sigma??5,beta,"left", evRxP.hDistort??0.3);
           if(!sR&&!sL) continue;
           candidates.push({ac,g,
             rawR:sR?sR.mainScore:0, FR:sR?sR.F:0,
@@ -1869,6 +2163,12 @@ function rxAutoRunEV() {
   });
 }
 
+/**
+ * Placeholder that marks the prescription as stale when parameters change.
+ * Auto-running the optimizer on every slider change would be too slow,
+ * so this just flags that a re-run is needed (shows the yellow ↺ button).
+ * The user must click Generate Prescription manually to trigger a new run.
+ */
 function scheduleRxRun() {
   // No-op: auto-run disabled. User must click the button.
   setRx({status:"stale"});
@@ -2027,10 +2327,65 @@ function renderPrescription() {
   const patientDataR=appState.patientDataRight||patientData;
   const patientDataL=appState.patientDataLeft;
   const binocular=appState.binocularMode;
-  const patient=patientData?patientData.patient:PATIENT_C;
-  const patientLabel=binocular?"RIGHT + LEFT EYE — Binocular":patientData?`${patientData.eye.toUpperCase()} EYE — Patient scan`:"Patient C (demo)";
+  const hasAnyPatient=!!(patientDataR||patientDataL);
+  const patient=patientDataR?patientDataR.patient:null;
+  const patientLabel=binocular?"RIGHT + LEFT EYE — Binocular":patientDataR?`${patientDataR.eye.toUpperCase()} EYE — Patient scan`:patientDataL?"LEFT EYE — Patient scan":"No patient loaded";
   const alpha=rx.alpha_c>0?thetaNodal(rx.alpha_c):0;
-  const sc=rx.alpha_c>0?computeScore(patient,rx.alpha_c,rx.gamma,rx.sigma,rx.beta,patientData?patientData.eye:"right",rx.hDistort??0.3):null;
+  const sc=rx.alpha_c>0&&patient?computeScore(patient,rx.alpha_c,rx.gamma,rx.sigma,rx.beta,patientDataR?patientDataR.eye:"right",rx.hDistort??0.3):null;
+
+  // If no patient loaded, show a prompt with Load Demo Patient button
+  if (!hasAnyPatient) {
+    return h("div",{style:{padding:"20px"}},
+      h("div",{style:{marginBottom:"18px"}},
+        h("div",{style:{fontSize:"11px",color:"#6b0070",letterSpacing:"2px",textTransform:"uppercase",marginBottom:"4px",fontFamily:"monospace"}},"STEP 2 — PRESCRIPTION"),
+        h("div",{style:{fontSize:"20px",fontWeight:"700",color:"#0f172a",fontFamily:"monospace"}},"PRL Prescription")
+      ),
+      h("div",{style:{...card(),maxWidth:"420px",padding:"28px 24px",textAlign:"center"}},
+        h("div",{style:{fontSize:"32px",marginBottom:"12px"}},"👁"),
+        h("div",{style:{fontSize:"15px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",marginBottom:"8px"}},"No patient data loaded"),
+        h("div",{style:{fontSize:"12px",color:"#64748b",fontFamily:"monospace",lineHeight:"1.7",marginBottom:"20px"}},
+          "Start a new patient scan, import a saved scotoma map,",h("br"),"or load the built-in demo patient."),
+        h("button",{
+          style:btnStyle({padding:"12px 28px",fontSize:"13px",fontWeight:"700",background:"#6b0070",color:"#fff",border:"1px solid #4a0050",borderRadius:"6px",marginBottom:"10px",width:"100%"}),
+          onclick:()=>{
+            appState.patientDataRight=null; appState.patientDataLeft=null;
+            appState.patientData=null; appState.binocularMode=false;
+            appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0};
+            setState({screen:"diagnostic",diag:{step:"instructions",tool:"boundary",eye:"right",
+              scotomaCells:new Set(),subScotomaCells:new Set(),distortCells:new Set(),
+              isDrawing:false,livePoints:[],generating:false}});
+          }},
+          "→ Start Patient Scan"),
+        h("button",{
+          style:btnStyle({padding:"10px 28px",fontSize:"12px",fontWeight:"700",background:"#f0e4f2",color:"#6b0070",border:"1px solid #e8d0ec",borderRadius:"6px",marginBottom:"12px",width:"100%"}),
+          onclick:()=>{
+            appState.patientData=PATIENT_DEMO_R;
+            appState.patientDataRight=PATIENT_DEMO_R;
+            appState.patientDataLeft=PATIENT_DEMO_L;
+            appState.binocularMode=true;
+            appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+            appState.rxLeft={...appState.rxLeft,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+            appState.rxEV={alpha_c:0,gamma:0,status:"idle",optima:null,committedSigma:5,omega:0.5,sigma:5,beta:0.5,mu:0.2,hDistort:0.3};
+            render();
+          }},
+          "Load Demo Patient"),
+        h("div",{style:{display:"flex",gap:"10px",justifyContent:"center",flexWrap:"wrap"}},
+          (()=>{
+            const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+            inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"right");});
+            const btn=h("button",{style:btnStyle({padding:"9px 18px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6b0070",fontSize:"12px",fontWeight:"700"}),onclick:()=>inp.click()},"📂 Import Right Eye");
+            return h("div",null,inp,btn);
+          })(),
+          (()=>{
+            const inp=h("input",{type:"file",accept:".json",style:{display:"none"}});
+            inp.addEventListener("change",e=>{if(e.target.files[0]) loadDamageMap(e.target.files[0],"left");});
+            const btn=h("button",{style:btnStyle({padding:"9px 18px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#6b0070",fontSize:"12px",fontWeight:"700"}),onclick:()=>inp.click()},"📂 Import Left Eye");
+            return h("div",null,inp,btn);
+          })()
+        )
+      )
+    );
+  }
 
   // Header
   const header=h("div",{style:{marginBottom:"18px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"10px"}},
@@ -2162,8 +2517,7 @@ function renderPrescription() {
         h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
         h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},
           rx.gamma,"°"),
-        h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},
-          azimuthLabel(rx.gamma)),
+
         h("div",{style:{marginTop:"10px"}},
           h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8",position:"relative"}},
             h("div",{style:{
@@ -2178,16 +2532,16 @@ function renderPrescription() {
       h("div",{style:{background:"#fff8ee",border:"1px solid #f0c060",borderRadius:"8px",padding:"12px 14px"}},
         h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
         h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
-          h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},alpha.toFixed(1)+"°"),h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",marginTop:"2px"}},"θ_n="+alpha.toFixed(1)+"°")),
-          h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"GAZE DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},((rx.gamma+180)%360)+"°"),h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",marginTop:"2px"}},azimuthLabel((rx.gamma+180)%360)))
+          h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},alpha.toFixed(1)+"°")),
+          h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"GAZE DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},((rx.gamma+180)%360)+"°"))
         ),
         h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",background:"#fef3c7",borderRadius:"4px",padding:"4px 6px"}},"Patient looks opposite to PRL retinal location")
       ),
       h("div",{style:{background:"#eef4ff",border:"1px solid #90b8f0",borderRadius:"8px",padding:"12px 14px"}},
         h("div",{style:{fontSize:"10px",color:"#1a4a90",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #b0d0f8",paddingBottom:"6px"}},"MS PRESCRIPTION"),
         h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
-          h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},alpha.toFixed(1)+"°"),h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",marginTop:"2px"}},"θ_c="+rx.alpha_c.toFixed(1)+"°")),
-          h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"BEAM DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},rx.gamma+"°"),h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",marginTop:"2px"}},azimuthLabel(rx.gamma)))
+          h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},alpha.toFixed(1)+"°")),
+          h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"BEAM DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},rx.gamma+"°"))
         ),
         h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",background:"#dbeafe",borderRadius:"4px",padding:"4px 6px"}},"Beam deflects image toward PRL — patient looks straight ahead")
       )
@@ -2341,7 +2695,7 @@ function renderPrescription() {
         if (_rxMapCanvasRef) {
           const rx2=appState.rx;
           const pd2=appState.patientDataRight||appState.patientData;
-          const pt2=pd2?pd2.patient:PATIENT_C;
+          const pt2=pd2?pd2.patient:PATIENT_DEMO_R.patient;
           const show=(rx2.status==="done"||rx2.status==="computing"||rx2.status==="stale")&&rx2.alpha_c>0;
           drawRetinalMap(_rxMapCanvasRef,pt2,show?thetaNodal(rx2.alpha_c):0,
             show?rx2.gamma:0,rx2.sigma,rx2.committedSigma,show?rx2.optima:null,480,pd2?pd2.eye:"right");
@@ -2360,7 +2714,7 @@ function renderPrescription() {
     h("div",{style:{background:"#ffffff",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"10px 14px"}},
       h("div",{style:{fontSize:"11px",fontWeight:"700",color:"#374151",fontFamily:"monospace",
         paddingBottom:"6px",marginBottom:"4px",borderBottom:"1px solid #e2e8f0"}},"Landing Zones"),
-      mkToggle("weighted","#ff6b00","PRL★","Optimal for your β/σ/μ"),
+      mkToggle("weighted","#ff6b00","PRL★","Optimal for your β/σ/μ"+((patientDataR&&(patientDataR.distortDeg2??0)>0)?"/ρ":"")),
       mkToggle("Conly",   "#1e90ff","β=1", "Acuity-weighted optimum"),
       mkToggle("Aonly",   "#888888","β=0.05","Near area-only optimum"),
       h("div",{style:{fontSize:"10px",color:"#94a3b8",fontFamily:"monospace",
@@ -2566,10 +2920,12 @@ function renderPrescription() {
       );
 
       const runBtnL=h("button",{
+        id:"rx-run-btn-left",
         style:btnStyle({width:"100%",padding:"12px",fontSize:"13px",marginTop:"4px",
           background:isCompL?"#f5eafa":rxL.status==="stale"?"#fff3cd":"#6b0070",
           color:isCompL?"#6b0070":rxL.status==="stale"?"#7a3800":"#ffffff",
           border:isCompL?"1px solid #d8a8dc":rxL.status==="stale"?"1px solid #f0a000":"1px solid #4a0050"}),
+        disabled:isCompL,
         onclick:()=>rxAutoRun("left")},
         isCompL?h("span",{class:"computing-dots"},"Computing")
         :rxL.status==="stale"?"↺  Regenerate":"▶  Generate Prescription");
@@ -2598,7 +2954,7 @@ function renderPrescription() {
           h("div",{style:{background:"#f4f0f8",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"12px 14px"}},
             h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
             h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},rxL.gamma+"°"),
-            h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},azimuthLabel(rxL.gamma)),
+
             h("div",{style:{marginTop:"10px"}},
               h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8"}},
                 h("div",{style:{width:Math.round(rxL.gamma/355*100)+"%",height:"100%",borderRadius:"3px",background:"#5b9bd5"}})))
@@ -2611,15 +2967,15 @@ function renderPrescription() {
             h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
             h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
               h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},alphaL.toFixed(1)+"°")),
-              h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"GAZE DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},((rxL.gamma+180)%360)+"°"),h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",marginTop:"2px"}},azimuthLabel((rxL.gamma+180)%360)))
+              h("div",null,h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"GAZE DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},((rxL.gamma+180)%360)+"°"))
             ),
-            h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",background:"#fef3c7",borderRadius:"4px",padding:"4px 6px"}},"Patient looks toward "+azimuthLabel((rxL.gamma+180)%360)+" — away from fovea")
+            h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",background:"#fef3c7",borderRadius:"4px",padding:"4px 6px"}},"Patient looks opposite to PRL retinal location")
           ),
           h("div",{style:{background:"#eef4ff",border:"1px solid #90b8f0",borderRadius:"8px",padding:"12px 14px"}},
             h("div",{style:{fontSize:"10px",color:"#1a4a90",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #b0d0f8",paddingBottom:"6px"}},"MS PRESCRIPTION"),
             h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}},
-              h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},alphaL.toFixed(1)+"°"),h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",marginTop:"2px"}},"θ_c="+rxL.alpha_c.toFixed(1)+"°")),
-              h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"BEAM DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},rxL.gamma+"°"),h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",marginTop:"2px"}},azimuthLabel(rxL.gamma)))
+              h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},alphaL.toFixed(1)+"°")),
+              h("div",null,h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"BEAM DIRECTION"),h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#0a2a70",fontFamily:"monospace",lineHeight:"1"}},rxL.gamma+"°"))
             ),
             h("div",{style:{fontSize:"9px",color:"#3060b0",fontFamily:"monospace",background:"#dbeafe",borderRadius:"4px",padding:"4px 6px"}},"Beam deflects image toward PRL — patient looks straight ahead")
           )
@@ -2682,27 +3038,41 @@ function renderPrescription() {
         isCompEV?h("span",{class:"computing-dots"},"Computing")
         :evRx.status==="stale"?"↺  Regenerate EV":"▶  Generate EV Prescription");
 
-      const evCard=evDone?h("div",{style:{background:"#f5f3ff",border:"1px solid #c4b5fd",
-          borderRadius:"8px",padding:"12px 14px",marginTop:"8px"}},
-        h("div",{style:{fontSize:"10px",color:"#5b21b6",fontFamily:"monospace",fontWeight:"700",
-          letterSpacing:"1px",marginBottom:"10px",borderBottom:"1px solid #ddd6fe",paddingBottom:"6px"}},
-          "SHARED GAZE DIRECTION — BOTH EYES"),
-        h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"10px"}},
-          h("div",null,
-            h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px"}},"ECCENTRICITY"),
-            h("div",{style:{fontSize:"24px",fontWeight:"700",color:"#3b0764",fontFamily:"monospace",lineHeight:"1"}},alphaEV.toFixed(1)+"°")),
-          h("div",null,
-            h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px"}},"GAZE DIRECTION"),
-            h("div",{style:{fontSize:"24px",fontWeight:"700",color:"#3b0764",fontFamily:"monospace",lineHeight:"1"}},((evRx.gamma+180)%360)+"°"),
-            h("div",{style:{fontSize:"9px",color:"#7c3aed",fontFamily:"monospace",marginTop:"2px"}},azimuthLabel((evRx.gamma+180)%360))),
-          h("div",null,
-            h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px"}},"ω RIGHT"),
-            h("div",{style:{fontSize:"24px",fontWeight:"700",color:"#3b0764",fontFamily:"monospace",lineHeight:"1"}},(omega*100).toFixed(0)+"%"))
+      const evCard=evDone?h("div",{style:{marginTop:"8px"}},
+        // PRL prescription boxes — same style as right/left
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}},
+          h("div",{style:{background:"#f4f0f8",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"12px 14px"}},
+            h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"ECCENTRICITY"),
+            h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},alphaEV.toFixed(1)+"°"),
+            h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",marginTop:"4px"}},"θ_n="+alphaEV.toFixed(1)+"°  ·  θ_c="+evRx.alpha_c.toFixed(1)+"°"),
+            h("div",{style:{marginTop:"10px"}},
+              h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8"}},
+                h("div",{style:{width:Math.round(alphaEV/35*100)+"%",height:"100%",borderRadius:"3px",background:"#cc3300"}})))
+          ),
+          h("div",{style:{background:"#f4f0f8",border:"1px solid #e8d0ec",borderRadius:"8px",padding:"12px 14px"}},
+            h("div",{style:{fontSize:"10px",color:"#6b0070",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
+            h("div",{style:{fontSize:"28px",fontWeight:"700",color:"#3d0042",fontFamily:"monospace",lineHeight:"1"}},evRx.gamma+"°"),
+            h("div",{style:{marginTop:"10px"}},
+              h("div",{style:{width:"100%",height:"6px",borderRadius:"3px",background:"#ddd0e8"}},
+                h("div",{style:{width:Math.round(evRx.gamma/355*100)+"%",height:"100%",borderRadius:"3px",background:"#5b9bd5"}})))
+          )
         ),
-
-        h("div",{style:{fontSize:"9px",color:"#6d28d9",fontFamily:"monospace",background:"#ede9fe",
-          borderRadius:"4px",padding:"5px 8px"}},
-          "Both eyes deviate gaze "+alphaEV.toFixed(1)+"° toward "+azimuthLabel((evRx.gamma+180)%360)+" · No metasurface needed — pure gaze training")
+        // Eccentric viewing section — same style as right/left EV card
+        h("div",{style:{background:"#fff8ee",border:"1px solid #f0c060",borderRadius:"8px",padding:"12px 14px"}},
+          h("div",{style:{fontSize:"10px",color:"#92600a",letterSpacing:"1px",fontFamily:"monospace",fontWeight:"700",marginBottom:"10px",borderBottom:"1px solid #f0d080",paddingBottom:"6px"}},"ECCENTRIC VIEWING"),
+          h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"8px"}},
+            h("div",null,
+              h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ECCENTRICITY"),
+              h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},alphaEV.toFixed(1)+"°")),
+            h("div",null,
+              h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"GAZE DIRECTION"),
+              h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},((evRx.gamma+180)%360)+"°")),
+            h("div",null,
+              h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",fontWeight:"700",letterSpacing:"1px",marginBottom:"2px"}},"ω RIGHT"),
+              h("div",{style:{fontSize:"22px",fontWeight:"700",color:"#7a4000",fontFamily:"monospace",lineHeight:"1"}},(omega*100).toFixed(0)+"%"))
+          ),
+          h("div",{style:{fontSize:"9px",color:"#b07820",fontFamily:"monospace",background:"#fef3c7",borderRadius:"4px",padding:"4px 6px"}},"Patient looks opposite to PRL retinal location")
+        )
       ):h("div",{style:{fontSize:"11px",color:"#9370a0",fontFamily:"monospace",padding:"8px 0",marginTop:"8px"}},
           "Run optimizer to compute shared EV direction");
 
@@ -2736,6 +3106,160 @@ function renderPrescription() {
       ));
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // v8 — BINOCULAR MS CO-PRESCRIPTION SECTION
+    // Independent (α_R,γ_R) and (α_L,γ_L) with delta constraints.
+    // All new code — nothing above this block is touched.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      const ms = appState.rxMS;
+      const msDone = ms.status === "done" && ms.alpha_cR > 0;
+      const msComp = ms.status === "computing";
+
+      const mkSlMS = (label, min, max, step, val, color, note, fmt, onCh) =>
+        sliderEl({label, min, max, step, val, color, note, fmt,
+          onLiveInput: v => { appState.rxMS[onCh] = v; },
+          onChange:    v => { appState.rxMS[onCh] = v; appState.rxMS.status = "stale"; redrawMaps(); }});
+
+      // Constraint sliders
+      const deltaAlphaSlider = sliderEl({
+        label:"Δα — Eccentricity tolerance", min:0, max:10, step:0.5,
+        val:ms.deltaAlpha??2, color:"#059669", note:"Max |α_R − α_L| allowed (degrees)",
+        fmt:v=>v.toFixed(1),
+        onLiveInput:v=>{ appState.rxMS.deltaAlpha=v; },
+        onChange:v=>{ appState.rxMS.deltaAlpha=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+      const deltaGammaSlider = sliderEl({
+        label:"Δγ — Azimuth tolerance", min:0, max:30, step:2,
+        val:ms.deltaGamma??15, color:"#0284c7", note:"Max azimuth diff between eyes (degrees) — ~2–4° retinal arc at typical eccentricity",
+        fmt:v=>v.toFixed(0)+"°",
+        onLiveInput:v=>{ appState.rxMS.deltaGamma=v; },
+        onChange:v=>{ appState.rxMS.deltaGamma=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+      const msOmegaSlider = sliderEl({
+        label:"ω — Right Eye Weight", min:0, max:1, step:0.05,
+        val:ms.omega??0.5, color:"#7c3aed", note:"0=left only · 0.5=equal · 1=right only",
+        fmt:v=>v.toFixed(2),
+        onLiveInput:v=>{ appState.rxMS.omega=v; },
+        onChange:v=>{ appState.rxMS.omega=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+      const msSigmaSlider = sliderEl({
+        label:"σ — Task Radius", min:2, max:20, step:1,
+        val:ms.sigma??5, color:"#cc3300", note:"Task window radius (degrees)",
+        fmt:v=>v+"°",
+        onLiveInput:v=>{ appState.rxMS.sigma=v; },
+        onChange:v=>{ appState.rxMS.sigma=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+      const msBetaSlider = sliderEl({
+        label:"β — Acuity Emphasis", min:0.05, max:1, step:0.05,
+        val:ms.beta??0.5, color:"#5b9bd5", note:"Acuity weight",
+        fmt:v=>v.toFixed(2),
+        onLiveInput:v=>{ appState.rxMS.beta=v; },
+        onChange:v=>{ appState.rxMS.beta=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+      const msMuSlider = sliderEl({
+        label:"μ — Fragmentation Penalty", min:0, max:1, step:0.05,
+        val:ms.mu??0.2, color:"#6b0070", note:"Fragmentation penalty",
+        fmt:v=>v.toFixed(2),
+        onLiveInput:v=>{ appState.rxMS.mu=v; },
+        onChange:v=>{ appState.rxMS.mu=v; appState.rxMS.status="stale"; redrawMaps(); }
+      });
+
+      const runBtnMS = h("button",{
+        id:"ms-coopt-btn",
+        style:btnStyle({width:"100%",padding:"12px",fontSize:"13px",fontWeight:"700",
+          background:msComp?"#d1fae5":ms.status==="stale"?"#fff3cd":"#065f46",
+          color:msComp?"#065f46":ms.status==="stale"?"#7a3800":"#fff",
+          border:msComp?"1px solid #6ee7b7":ms.status==="stale"?"1px solid #f0a000":"1px solid #064e3b"}),
+        disabled:msComp,
+        onclick:rxAutoRunMS},
+        msComp?"Computing…":ms.status==="stale"?"↺  Regenerate MS Co-Prescription":"▶  Generate MS Co-Prescription");
+
+      // Result cards — shown once done
+      const msPrescCard = msDone ? h("div",{style:{marginTop:"10px"}},
+        // Right eye PRL
+        h("div",{style:{fontSize:"10px",color:"#065f46",fontFamily:"monospace",fontWeight:"700",
+          letterSpacing:"2px",marginBottom:"6px"}},"RIGHT EYE — MS PRL"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}},
+          h("div",{style:{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"10px 12px"}},
+            h("div",{style:{fontSize:"10px",color:"#065f46",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"ECCENTRICITY"),
+            h("div",{style:{fontSize:"26px",fontWeight:"700",color:"#052e16",fontFamily:"monospace",lineHeight:"1"}},thetaNodal(ms.alpha_cR).toFixed(1)+"°"),
+            h("div",{style:{fontSize:"11px",color:"#059669",fontFamily:"monospace",marginTop:"4px"}},"θ_n="+thetaNodal(ms.alpha_cR).toFixed(1)+"°  ·  θ_c="+ms.alpha_cR.toFixed(1)+"°")
+          ),
+          h("div",{style:{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"10px 12px"}},
+            h("div",{style:{fontSize:"10px",color:"#065f46",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
+            h("div",{style:{fontSize:"26px",fontWeight:"700",color:"#052e16",fontFamily:"monospace",lineHeight:"1"}},ms.gammaR+"°")
+          )
+        ),
+        // Left eye PRL
+        h("div",{style:{fontSize:"10px",color:"#1e40af",fontFamily:"monospace",fontWeight:"700",
+          letterSpacing:"2px",marginBottom:"6px"}},"LEFT EYE — MS PRL"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}},
+          h("div",{style:{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"10px 12px"}},
+            h("div",{style:{fontSize:"10px",color:"#1e40af",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"ECCENTRICITY"),
+            h("div",{style:{fontSize:"26px",fontWeight:"700",color:"#1e3a8a",fontFamily:"monospace",lineHeight:"1"}},thetaNodal(ms.alpha_cL).toFixed(1)+"°"),
+            h("div",{style:{fontSize:"11px",color:"#2563eb",fontFamily:"monospace",marginTop:"4px"}},"θ_n="+thetaNodal(ms.alpha_cL).toFixed(1)+"°  ·  θ_c="+ms.alpha_cL.toFixed(1)+"°")
+          ),
+          h("div",{style:{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"10px 12px"}},
+            h("div",{style:{fontSize:"10px",color:"#1e40af",fontFamily:"monospace",fontWeight:"700",marginBottom:"4px"}},"AZIMUTH"),
+            h("div",{style:{fontSize:"26px",fontWeight:"700",color:"#1e3a8a",fontFamily:"monospace",lineHeight:"1"}},ms.gammaL+"°")
+          )
+        ),
+        // Delta summary
+        h("div",{style:{fontSize:"11px",color:"#374151",fontFamily:"monospace",background:"#f8fafc",
+          border:"1px solid #e2e8f0",borderRadius:"5px",padding:"7px 10px"}},
+          "Δα = "+Math.abs(thetaNodal(ms.alpha_cR)-thetaNodal(ms.alpha_cL)).toFixed(1)+"°  ·  "+
+          "Δγ = "+angDiff(ms.gammaR,ms.gammaL).toFixed(0)+"°  ·  "+
+          "constraint: Δα≤"+ms.deltaAlpha+"°, Δγ≤"+ms.deltaGamma+"°")
+      ) : null;
+
+      // Two retinal maps for MS co-opt
+      const _msmbR = makeMapBlock(480,"mapZoomMSR","RIGHT RETINA — MS Co-Opt","#065f46");
+      const _msmbL = makeMapBlock(480,"mapZoomMSL","LEFT RETINA — MS Co-Opt","#1e40af");
+      _rxMapCanvasRefMSR = _msmbR.canvas;
+      _rxMapCanvasRefMSL = _msmbL.canvas;
+      requestAnimationFrame(()=>{ _msmbR.wireEvents(); _msmbL.wireEvents(); });
+
+      // Draw MS co-opt maps after DOM insertion
+      requestAnimationFrame(()=>{
+        const showMS = msDone;
+        if (_rxMapCanvasRefMSR && patientDataR) {
+          const optR = showMS ? {weighted:{alpha_c:ms.alpha_cR,alpha:thetaNodal(ms.alpha_cR),gamma:ms.gammaR},Aonly:null,Conly:null} : null;
+          drawRetinalMap(_rxMapCanvasRefMSR, patientDataR.patient, showMS?thetaNodal(ms.alpha_cR):0, showMS?ms.gammaR:0, ms.sigma, ms.sigma, optR, 480, "right");
+        }
+        if (_rxMapCanvasRefMSL && patientDataL) {
+          const mirG = g => (180-g+360)%360;
+          const optL = showMS ? {weighted:{alpha_c:ms.alpha_cL,alpha:thetaNodal(ms.alpha_cL),gamma:mirG(ms.gammaL)},Aonly:null,Conly:null} : null;
+          drawRetinalMap(_rxMapCanvasRefMSL, patientDataL.patient, showMS?thetaNodal(ms.alpha_cL):0, showMS?mirG(ms.gammaL):0, ms.sigma, ms.sigma, optL, 480, "left");
+        }
+      });
+
+      const msControlCol = h("div",{class:"rx-sidebar",style:{display:"flex",gap:"12px",alignItems:"flex-start",flex:"0 0 auto",minWidth:"300px",maxWidth:"420px"}},
+        h("div",{style:{...card(),background:"#f0fdf4",border:"1px solid #bbf7d0",minWidth:"240px",flex:"1 1 240px"}},
+          h("div",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"2px",color:"#065f46",
+            fontFamily:"monospace",marginBottom:"12px"}},"MS CO-PRESCRIPTION PARAMETERS"),
+          h("div",{style:{fontSize:"11px",color:"#374151",fontFamily:"monospace",lineHeight:"1.6",
+            marginBottom:"10px",background:"#dcfce7",borderRadius:"4px",padding:"6px 8px"}},
+            "Independent PRL per eye — constrained by Δα and Δγ."),
+          deltaAlphaSlider, deltaGammaSlider, msOmegaSlider,
+          msSigmaSlider, msBetaSlider, msMuSlider,
+          runBtnMS,
+          msPrescCard
+        )
+      );
+
+      sections.push(h("div",{style:{marginTop:"24px",borderTop:"2px solid #bbf7d0",paddingTop:"20px"}},
+        h("div",{style:{fontSize:"10px",color:"#065f46",fontFamily:"monospace",fontWeight:"700",
+          letterSpacing:"2px",marginBottom:"14px"}},"MS CO-PRESCRIPTION — BINOCULAR INDEPENDENT PRL"),
+        h("div",{style:{display:"flex",gap:"24px",alignItems:"flex-start",flexWrap:"nowrap",width:"max-content",overflowX:"auto",paddingBottom:"12px"}},
+          msControlCol,
+          h("div",{class:"rx-map-block",style:{display:"flex",flexDirection:"column",alignItems:"center"}},_msmbR.block),
+          h("div",{class:"rx-map-block",style:{display:"flex",flexDirection:"column",alignItems:"center"}},_msmbL.block)
+        )
+      ));
+    }
+    // ─── end v8 MS Co-Prescription section ───────────────────────────────────
+
     binoSection=h("div",null,...sections);
   }
 
@@ -2754,6 +3278,17 @@ function renderPrescription() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN RENDER
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Rebuilds the entire app HTML from scratch based on the current appState.
+ * Called by render() on every state change. Decides which screen to show
+ * (home, diagnostic, or prescription) and replaces the #app container content.
+ *
+ * Also handles:
+ *   - The "IMPORTING SCOTOMA MAP" overlay while loading a JSON file
+ *   - Synchronous canvas wiring for the diagnostic draw screen
+ *   - Saving and restoring scroll position (via render() wrapper) so the
+ *     page doesn't jump to the top on every update
+ */
 function renderApp() {
   const d=appState.diag;
   const s=appState;
@@ -2767,7 +3302,7 @@ function renderApp() {
     ),
     h("div",{style:{display:"flex",gap:"8px",alignItems:"center"}},
       s.screen==="prescription"?h("span",{style:{fontSize:"10px",color:"#b45309",fontFamily:"monospace"}},
-        s.patientData?`Patient scan · ${s.patientData.eye} eye`:"Demo · Patient C"):null,
+        s.patientData?`Patient scan · ${s.patientData.eye} eye`:"Demo · Binocular"):null,
     h("div",{style:{display:"flex",gap:"6px",alignItems:"center"}},
       h("button",{
         style:btnStyle({padding:"7px 14px",border:"1px solid #e8d0ec",borderRadius:"6px",fontSize:"12px",fontWeight:"700",
@@ -2828,15 +3363,30 @@ function renderApp() {
 
 /**
  * The main render function — called whenever app state changes.
- * It calls renderApp() to rebuild the HTML, then redraws all canvases
- * using requestAnimationFrame (so the browser can paint the HTML first).
+ * Saves the page scroll position before rebuilding the DOM, then
+ * restores it immediately after, so the page never jumps to the top.
  *
- * Note: Some interactions (zoom buttons, landing zone checkboxes) bypass
- * render() entirely and patch the DOM directly to avoid resetting scroll.
+ * After rebuilding the HTML, redraws all canvas elements using
+ * requestAnimationFrame so the browser paints the HTML first.
+ *
+ * Note: Many interactions (zoom, checkboxes, sliders, progress updates)
+ * bypass render() entirely and patch the DOM directly via redrawMaps()
+ * or in-place element updates, for even better scroll preservation.
  */
 /**
  * Redraws only the prescription map canvases — no DOM rebuild, no scroll reset.
  * Used by slider onChange handlers so dragging a slider doesn't jump the page.
+ */
+/**
+ * Redraws only the prescription retinal map canvases — without rebuilding
+ * the DOM or resetting the page scroll position.
+ *
+ * Used by slider onChange handlers and progress updates so that moving a
+ * slider or watching the optimizer progress bar doesn't scroll the page
+ * back to the top. Much faster than a full render() call.
+ *
+ * Redraws: right-eye MS map, left-eye MS map (if binocular),
+ *           and both EV maps (if binocular).
  */
 function redrawMaps() {
   if (appState.screen!=="prescription") return;
@@ -2844,7 +3394,7 @@ function redrawMaps() {
     if (_rxMapCanvasRef) {
       const rx2=appState.rx;
       const pd2=appState.patientDataRight||appState.patientData;
-      const pt2=pd2?pd2.patient:PATIENT_C;
+      const pt2=pd2?pd2.patient:PATIENT_DEMO_R.patient;
       const show=(rx2.status==="done"||rx2.status==="computing"||rx2.status==="stale")&&rx2.alpha_c>0;
       drawRetinalMap(_rxMapCanvasRef,pt2,show?thetaNodal(rx2.alpha_c):0,
         show?rx2.gamma:0,rx2.sigma,rx2.committedSigma,show?rx2.optima:null,480,pd2?pd2.eye:"right");
@@ -2854,8 +3404,14 @@ function redrawMaps() {
       const pdL2=appState.patientDataLeft;
       if(pdL2&&_rxMapCanvasRefL){
         const showL=(rxL2.status==="done"||rxL2.status==="computing"||rxL2.status==="stale")&&rxL2.alpha_c>0;
+        const _mirL=g=>(180-g+360)%360;
+        const _optL=rxL2.optima?{
+          Aonly:rxL2.optima.Aonly?{...rxL2.optima.Aonly,gamma:_mirL(rxL2.optima.Aonly.gamma)}:null,
+          Conly:rxL2.optima.Conly?{...rxL2.optima.Conly,gamma:_mirL(rxL2.optima.Conly.gamma)}:null,
+          weighted:rxL2.optima.weighted?{...rxL2.optima.weighted,gamma:_mirL(rxL2.optima.weighted.gamma)}:null,
+        }:null;
         drawRetinalMap(_rxMapCanvasRefL,pdL2.patient,showL?thetaNodal(rxL2.alpha_c):0,
-          showL?rxL2.gamma:0,rxL2.sigma,rxL2.committedSigma,showL?rxL2.optima:null,480,"left");
+          showL?_mirL(rxL2.gamma):0,rxL2.sigma,rxL2.committedSigma,showL?_optL:null,480,"left");
       }
     }
     if (appState.binocularMode) {
@@ -2877,6 +3433,20 @@ function redrawMaps() {
         drawRetinalMap(_rxMapCanvasRefEVR,pdR2.patient,evAlpha,evGamma,appState.rx.sigma,evSigma,evOptima,480,"right");
       if(_rxMapCanvasRefEVL&&pdL2)
         drawRetinalMap(_rxMapCanvasRefEVL,pdL2.patient,evAlpha,mirrorGamma(evGamma),appState.rxLeft.sigma,evSigma,evOptimaL,480,"left");
+    }
+    // v8: MS co-opt maps
+    const ms2=appState.rxMS;
+    const showMS2=ms2.status==="done"&&ms2.alpha_cR>0;
+    const pdR3=appState.patientDataRight||appState.patientData;
+    const pdL3=appState.patientDataLeft;
+    const mirG2=g=>(180-g+360)%360;
+    if(_rxMapCanvasRefMSR&&pdR3){
+      const optR2=showMS2?{weighted:{alpha_c:ms2.alpha_cR,alpha:thetaNodal(ms2.alpha_cR),gamma:ms2.gammaR},Aonly:null,Conly:null}:null;
+      drawRetinalMap(_rxMapCanvasRefMSR,pdR3.patient,showMS2?thetaNodal(ms2.alpha_cR):0,showMS2?ms2.gammaR:0,ms2.sigma,ms2.sigma,optR2,480,"right");
+    }
+    if(_rxMapCanvasRefMSL&&pdL3){
+      const optL2=showMS2?{weighted:{alpha_c:ms2.alpha_cL,alpha:thetaNodal(ms2.alpha_cL),gamma:mirG2(ms2.gammaL)},Aonly:null,Conly:null}:null;
+      drawRetinalMap(_rxMapCanvasRefMSL,pdL3.patient,showMS2?thetaNodal(ms2.alpha_cL):0,showMS2?mirG2(ms2.gammaL):0,ms2.sigma,ms2.sigma,optL2,480,"left");
     }
   });
 }
@@ -2904,7 +3474,7 @@ function render() {
     if (_rxMapCanvasRef) requestAnimationFrame(()=>{
       const rx2=appState.rx;
       const pd2=appState.patientDataRight||appState.patientData;
-      const pt2=pd2?pd2.patient:PATIENT_C;
+      const pt2=pd2?pd2.patient:PATIENT_DEMO_R.patient;
       const show=( rx2.status==="done"||rx2.status==="computing"||rx2.status==="stale")&&rx2.alpha_c>0;
       drawRetinalMap(_rxMapCanvasRef,pt2,show?thetaNodal(rx2.alpha_c):0,
         show?rx2.gamma:0,rx2.sigma,rx2.committedSigma,show?rx2.optima:null,480,pd2?pd2.eye:"right");
@@ -2915,8 +3485,14 @@ function render() {
       const pdL2=appState.patientDataLeft;
       if(!pdL2||!_rxMapCanvasRefL) return;
       const showL=(rxL2.status==="done"||rxL2.status==="computing"||rxL2.status==="stale")&&rxL2.alpha_c>0;
+      const _mirL2=g=>(180-g+360)%360;
+      const _optL2=rxL2.optima?{
+        Aonly:rxL2.optima.Aonly?{...rxL2.optima.Aonly,gamma:_mirL2(rxL2.optima.Aonly.gamma)}:null,
+        Conly:rxL2.optima.Conly?{...rxL2.optima.Conly,gamma:_mirL2(rxL2.optima.Conly.gamma)}:null,
+        weighted:rxL2.optima.weighted?{...rxL2.optima.weighted,gamma:_mirL2(rxL2.optima.weighted.gamma)}:null,
+      }:null;
       drawRetinalMap(_rxMapCanvasRefL,pdL2.patient,showL?thetaNodal(rxL2.alpha_c):0,
-        showL?rxL2.gamma:0,rxL2.sigma,rxL2.committedSigma,showL?rxL2.optima:null,480,"left");
+        showL?_mirL2(rxL2.gamma):0,rxL2.sigma,rxL2.committedSigma,showL?_optL2:null,480,"left");
     });
     // EV maps — both retinas, same zone
     if (appState.binocularMode) requestAnimationFrame(()=>{
