@@ -2428,6 +2428,20 @@ function renderPrescription() {
             setState({screen:"diagnostic"});
           }},
           (patientDataR&&patientDataR.eye==="right")?"+ Scan LEFT Eye":"+ Scan RIGHT Eye"):null,
+      h("button",{
+        style:btnStyle({padding:"8px 14px",border:"1px solid #e8d0ec",background:"#f0e4f2",color:"#6b0070",fontSize:"12px"}),
+        onclick:()=>{
+          appState.patientData=PATIENT_DEMO_R;
+          appState.patientDataRight=PATIENT_DEMO_R;
+          appState.patientDataLeft=PATIENT_DEMO_L;
+          appState.binocularMode=true;
+          appState.rx={...appState.rx,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+          appState.rxLeft={...appState.rxLeft,status:"idle",optima:null,alpha_c:0,gamma:0,progress:0};
+          appState.rxEV={alpha_c:0,gamma:0,status:"idle",optima:null,committedSigma:5,omega:0.5,sigma:5,beta:0.5,mu:0.2,hDistort:0.3};
+          appState.rxMS={...appState.rxMS,status:"idle",optima:null,alpha_cR:0,gammaR:0,alpha_cL:0,gammaL:0};
+          render();
+        }},
+        "Load Demo"),
       h("button",{style:btnStyle({padding:"8px 14px",border:"1px solid #d1d9e6",background:"#f0e4f2",color:"#6b0070",fontSize:"13px"}),
         onclick:()=>setState({screen:"diagnostic"})},"← BACK")
     )
